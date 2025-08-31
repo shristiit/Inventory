@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import * as ctrl from '../controllers/product.controller';
-
 const r = Router();
 
 // Public create: product + variants + sizes
@@ -9,6 +8,8 @@ r.post('/', ctrl.createProductDeep);
 // Public reads
 r.get('/', ctrl.listProducts);
 r.get('/:id', ctrl.getProductDeep);
+r.get('/:id/variants', ctrl.listVariantsForProduct);
+
 
 // (Optional) keep these public during dev only; lock down later
 r.patch('/:id', ctrl.updateProduct);

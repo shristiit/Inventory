@@ -456,12 +456,12 @@ export default function ProductDetailsPage() {
       {/* ------- VARIANTS (Editable table) ------- */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-medium">Variants</h2>
+          <h2 className="font-medium">Colors and Sizes</h2>
 
           {!addingVariant ? (
             <Button type="button" variant="secondary" onClick={() => setAddingVariant(true)}>
               <Plus className="h-4 w-4 mr-2" />
-              Add variant
+              Add Color and Size
             </Button>
           ) : (
             <div className="w-full border rounded p-3 space-y-3">
@@ -482,14 +482,7 @@ export default function ProductDetailsPage() {
                     placeholder="Black"
                   />
                 </div>
-                <div>
-                  <Label className="m-2">Color code</Label>
-                  <Input
-                    value={newVariant.colorCode}
-                    onChange={(e) => setNewVariant({ ...newVariant, colorCode: e.target.value })}
-                    placeholder="#111111"
-                  />
-                </div>
+                
                 <div>
                   <Label className="m-2">Status</Label>
                   <select
@@ -566,7 +559,6 @@ export default function ProductDetailsPage() {
                 <TableHead />
                 <TableHead className="font-semibold">SKU</TableHead>
                 <TableHead className="font-semibold">Color</TableHead>
-                <TableHead className="font-semibold">Code</TableHead>
                 <TableHead className="font-semibold">Status</TableHead>
                 <TableHead className="font-semibold text-right">Actions</TableHead>
               </TableRow>
@@ -575,7 +567,7 @@ export default function ProductDetailsPage() {
               {variants.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-6 text-gray-500">
-                    No variants yet.
+                    No Colors yet.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -629,36 +621,7 @@ export default function ProductDetailsPage() {
                           )}
                         </TableCell>
 
-                        {/* Color code + swatch */}
-                        <TableCell className="align-middle">
-                          {isEditing ? (
-                            <div className="flex items-center gap-2">
-                              <Input
-                                value={draft?.color?.code || ""}
-                                onChange={(e) =>
-                                  setDraftVariant((d) =>
-                                    d
-                                      ? { ...d, color: { ...(d.color || {}), code: e.target.value } }
-                                      : d
-                                  )
-                                }
-                                placeholder="#111111"
-                              />
-                              <span
-                                className="inline-block w-5 h-5 rounded border"
-                                style={{ backgroundColor: draft?.color?.code || "#fff" }}
-                              />
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="inline-block w-5 h-5 rounded border"
-                                style={{ backgroundColor: v.color?.code || "#fff" }}
-                              />
-                              <span className="font-mono text-xs">{v.color?.code || "—"}</span>
-                            </div>
-                          )}
-                        </TableCell>
+                       
 
                         {/* Status */}
                         <TableCell className="align-middle">

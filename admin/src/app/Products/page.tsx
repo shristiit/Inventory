@@ -20,7 +20,7 @@ type ProductRow = {
   _id: string;
   styleNumber: string;
   title: string;
-  status: "active" | "inactive" | "draft" | "archived";
+  status: "Active" | "Inactive" | "Draft" | "Archived";
   price: number; // minor units
   updatedAt?: string;
   variantCount?: number;
@@ -32,18 +32,14 @@ type ListResponse = {
   rows: ProductRow[];
 };
 
-/** ---- Deep product (expanded so we can read color + size labels) ---- */
-type SizeDeep = {
-  label: string;
-  totalQuantity?: number;
-  reservedTotal?: number;
-  sellableQuantity?: number;
-};
-type VariantDeep = {
+/** ---- Variant list (from GET /api/products/:id/variants) ---- */
+type VariantRow = {
+  _id: string;
+  sku: string;
   color?: { name?: string; code?: string };
-  sizes?: SizeDeep[];
+  status?: "Active" | "Inactive";
+  // (sizes aren’t returned by this endpoint unless you add a populate)
 };
-type ProductDeep = { _id: string; variants?: VariantDeep[] };
 
 const ITEMS_PER_PAGE = 15;
 
@@ -63,16 +59,19 @@ export default function ProductsPage() {
   const [page, setPage] = useState(0); // 0-based for UI
   const [total, setTotal] = useState(0);
 
-  // qtyMap holds per-product totals once fetched
+  // Variants per product
+  const [variantMap, setVariantMap] = useState<Record<string, VariantRow[]>>(
+    {}
+  );
+  const [variantLoading, setVariantLoading] = useState<Record<string, boolean>>(
+    {}
+  );
+
+  // Totals per product (keep your existing structure if you had it)
   const [qtyMap, setQtyMap] = useState<
     Record<string, { total: number; reserved: number; sellable: number }>
   >({});
   const [qtyLoading, setQtyLoading] = useState<Record<string, boolean>>({});
-
-  // meta map to display colors and sizes
-  const [metaMap, setMetaMap] = useState<
-    Record<string, { colors: string[]; sizes: string[] }>
-  >({});
 
   const fetchPage = useCallback(async (uiPage: number) => {
     setLoading(true);
@@ -94,7 +93,7 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchPage(page);
   }, [page, fetchPage]);
-
+  console.log("products ==>", rows);
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(total / ITEMS_PER_PAGE)),
     [total]
@@ -103,50 +102,16 @@ export default function ProductsPage() {
   // Visible rows on this page
   const visible = rows;
 
-  // Compute totals AND collect display meta from deep product payload
-  function computeFromDeep(p: ProductDeep) {
-    let total = 0,
-      reserved = 0,
-      sellable = 0;
-    const colorSet = new Set<string>();
-    const sizeSet = new Set<string>();
-
-    (p.variants ?? []).forEach((v) => {
-      const colorName = v?.color?.name?.trim();
-      if (colorName) colorSet.add(colorName);
-
-      (v.sizes ?? []).forEach((s) => {
-        total += Number(s.totalQuantity ?? 0);
-        reserved += Number(s.reservedTotal ?? 0);
-        const sell =
-          s.sellableQuantity ??
-          Math.max(
-            0,
-            Number(s.totalQuantity ?? 0) - Number(s.reservedTotal ?? 0)
-          );
-        sellable += Number(sell);
-
-        const lbl = (s.label ?? "").toString().trim();
-        if (lbl) sizeSet.add(lbl);
-      });
-    });
-
-    return {
-      totals: { total, reserved, sellable },
-      meta: { colors: Array.from(colorSet), sizes: Array.from(sizeSet) },
-    };
-  }
-
-  // Lazily fetch quantities + meta for the visible rows
-  const fetchQuantitiesForVisible = useCallback(async () => {
+  /** ---- Fetch variants for currently visible products (lazy) ---- */
+  const fetchVariantsForVisible = useCallback(async () => {
     const idsToFetch = visible
       .map((r) => r._id)
-      .filter((id) => !qtyMap[id] && !qtyLoading[id]); // skip already loaded/in-flight
+      .filter((id) => !variantMap[id] && !variantLoading[id]);
 
     if (idsToFetch.length === 0) return;
 
-    // Mark in-flight
-    setQtyLoading((prev) => {
+    // mark in-flight
+    setVariantLoading((prev) => {
       const next = { ...prev };
       idsToFetch.forEach((id) => {
         next[id] = true;
@@ -157,38 +122,34 @@ export default function ProductsPage() {
     try {
       const results = await Promise.allSettled(
         idsToFetch.map(async (id) => {
-          const { data } = await api.get<ProductDeep>(`/api/products/${id}`);
-          const { totals, meta } = computeFromDeep(data);
-          return { id, totals, meta };
+          const { data } = await api.get<VariantRow[]>(
+            `/api/products/${id}/variants`
+          );
+          return { id, variants: data || [] };
         })
       );
+     console.log(results)
 
-      const addQty: Record<
-        string,
-        { total: number; reserved: number; sellable: number }
-      > = {};
-      const addMeta: Record<string, { colors: string[]; sizes: string[] }> = {};
+      const add: Record<string, VariantRow[]> = {};
       const done: Record<string, boolean> = {};
 
       results.forEach((r) => {
         if (r.status === "fulfilled") {
-          const { id, totals, meta } = r.value;
-          addQty[id] = totals;
-          addMeta[id] = meta;
+          const { id, variants } = r.value;
+          add[id] = variants;
           done[id] = true;
         } else {
-          const failedId = (r as any).reason?.config?.url?.split("/").pop();
+          const failedId =
+            (r as any).reason?.config?.url?.split("/").pop() ?? null;
           if (failedId) done[failedId] = true;
         }
       });
 
-      if (Object.keys(addQty).length)
-        setQtyMap((prev) => ({ ...prev, ...addQty }));
-      if (Object.keys(addMeta).length)
-        setMetaMap((prev) => ({ ...prev, ...addMeta }));
-
+      if (Object.keys(add).length) {
+        setVariantMap((prev) => ({ ...prev, ...add }));
+      }
       if (Object.keys(done).length) {
-        setQtyLoading((prev) => {
+        setVariantLoading((prev) => {
           const next = { ...prev };
           Object.keys(done).forEach((id) => {
             delete next[id];
@@ -198,35 +159,45 @@ export default function ProductsPage() {
       }
     } catch (e) {
       console.error(e);
-      setQtyLoading((prev) => {
+      // clear in-flight flags on error
+      setVariantLoading((prev) => {
         const next = { ...prev };
-        idsToFetch.forEach((id) => {
-          delete next[id];
-        });
+        idsToFetch.forEach((id) => delete next[id]);
         return next;
       });
     }
-  }, [visible, qtyMap, qtyLoading]);
+  }, [visible, variantMap, variantLoading]);
 
   useEffect(() => {
-    fetchQuantitiesForVisible();
-  }, [fetchQuantitiesForVisible]);
+    fetchVariantsForVisible();
+  }, [fetchVariantsForVisible]);
 
-  // helper to render up to N chips with “+N more”
-  const renderChips = (items: string[] | undefined, max = 6) => {
-    if (!items || items.length === 0) return <span>—</span>;
-    const head = items.slice(0, max);
-    const extra = items.length - head.length;
+  // (Optional) If you still want to compute and show totals, keep your existing logic here.
+  // For brevity, the following demo shows only the Variants column from the variants API.
+
+  // render a list of variant chips
+  function renderVariantChips(
+    vs?: VariantRow[] | undefined,
+    productId: string
+  ) {
+    if (!vs || vs.length === 0) return <span>—</span>;
+    const max = 6;
+    const head = vs.slice(0, max);
+    const extra = vs.length - head.length;
     return (
       <div className="flex flex-wrap gap-1">
-        {head.map((t) => (
-          <span
-            key={t}
-            className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-800"
-          >
-            {t}
-          </span>
-        ))}
+        {head.map((v) => {
+          const label = v.color?.name ? `${v.sku} ·${v.color.name} ${v.status}` : v.sku;
+          return (
+            <span
+              key={v._id}
+              className={`${v.status === "inactive" ? "bg-red-200 px-2 py-1 rounded-lg" : "bg-gray-200 px-2 py-1 rounded-lg"}`}
+              title={label}
+            >
+              {label}
+            </span>
+          );
+        })}
         {extra > 0 && (
           <span className="px-2 py-0.5 text-xs rounded-full bg-gray-200 text-gray-700">
             +{extra} more
@@ -234,12 +205,10 @@ export default function ProductsPage() {
         )}
       </div>
     );
-  };
+  }
 
   if (loading)
-    return (
-      <div className="p-6 text-lg font-medium">Loading products…</div>
-    );
+    return <div className="p-6 text-lg font-medium">Loading products…</div>;
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 bg-white shadow-lg rounded-xl border border-gray-200">
@@ -252,6 +221,9 @@ export default function ProductsPage() {
           >
             <Plus className="mr-2 h-4 w-4" />
             Create product
+          </Button>
+          <Button onClick={() => router.push("/products/inactive")}>
+            In-active Products
           </Button>
           <Button variant="outline" onClick={() => fetchPage(page)}>
             Refresh
@@ -267,10 +239,7 @@ export default function ProductsPage() {
               <TableHead className="font-semibold">Title</TableHead>
               <TableHead className="font-semibold">Status</TableHead>
               <TableHead className="font-semibold">Price</TableHead>
-              <TableHead className="font-semibold">Colors & Sizes</TableHead>
-              <TableHead className="font-semibold text-right">Total</TableHead>
-              <TableHead className="font-semibold text-right">Reserved</TableHead>
-              <TableHead className="font-semibold text-right">Sellable</TableHead>
+              <TableHead className="font-semibold">Variants</TableHead>
               <TableHead className="font-semibold">Updated</TableHead>
             </TableRow>
           </TableHeader>
@@ -278,7 +247,7 @@ export default function ProductsPage() {
             {visible.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={9}
+                  colSpan={6}
                   className="text-center py-6 text-gray-500"
                 >
                   No products found.
@@ -286,10 +255,8 @@ export default function ProductsPage() {
               </TableRow>
             ) : (
               visible.map((p) => {
-                const qty = qtyMap[p._id];
-                const loadingQty = !!qtyLoading[p._id];
-                const meta = metaMap[p._id];
-
+                const vList = variantMap[p._id];
+                const vLoading = !!variantLoading[p._id];
                 return (
                   <TableRow
                     key={p._id}
@@ -303,7 +270,7 @@ export default function ProductsPage() {
                         {p.styleNumber}
                       </Link>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="capitalize">
                       <Link
                         href={`/products/${p._id}`}
                         className="text-indigo-600 hover:underline"
@@ -312,33 +279,10 @@ export default function ProductsPage() {
                       </Link>
                     </TableCell>
                     <TableCell className="capitalize">{p.status}</TableCell>
-                    <TableCell>{formatMinorGBP(p.price)}</TableCell>
+                    <TableCell className="capitalize">{formatMinorGBP(p.price)}</TableCell>
 
-                    {/* Colors & Sizes badges */}
-                    <TableCell>
-                      {loadingQty ? (
-                        "…"
-                      ) : (
-                        <div className="space-y-1">
-                          <div className="text-xs text-gray-500">Colors</div>
-                          {renderChips(meta?.colors)}
-                          <div className="text-xs text-gray-500 mt-1">
-                            Sizes
-                          </div>
-                          {renderChips(meta?.sizes)}
-                        </div>
-                      )}
-                    </TableCell>
-
-                    <TableCell className="text-right tabular-nums">
-                      {loadingQty ? "…" : qty ? qty.total : "—"}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {loadingQty ? "…" : qty ? qty.reserved : "—"}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {loadingQty ? "…" : qty ? qty.sellable : "—"}
-                    </TableCell>
+                    {/* Variants from GET /api/products/:id/variants */}
+                    <TableCell className="capitalize">{renderVariantChips(vList, p._id)}</TableCell>
 
                     <TableCell>
                       {p.updatedAt
@@ -367,9 +311,7 @@ export default function ProductsPage() {
           </span>
           <Button
             variant="outline"
-            onClick={() =>
-              setPage((p) => Math.min(p + 1, totalPages - 1))
-            }
+            onClick={() => setPage((p) => Math.min(p + 1, totalPages - 1))}
             disabled={page >= totalPages - 1}
           >
             Next

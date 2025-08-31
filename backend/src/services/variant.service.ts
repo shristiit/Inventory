@@ -17,6 +17,18 @@ export async function update(variantId: string, patch: any, adminId: any) {
   return Variant.findByIdAndUpdate(variantId, { $set: { ...patch, updatedBy: adminId } }, { new: true }).lean();
 }
 
+
+export async function listByProduct(productId: string) {
+  return Variant
+    .find({ productId /*, isDeleted: { $ne: true } */ })
+    .sort({ createdAt: -1 })
+    .lean();
+}
+
+export async function getById(variantId: string) {
+  return Variant.findById(variantId).lean();
+}
+
 export async function removeCascadeArchive(variantId: string, adminId: any) {
   const session = await mongoose.startSession();
   session.startTransaction();

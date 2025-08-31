@@ -24,7 +24,7 @@ export async function createDeep(input: DeepCreateInput, adminId: any) {
   try {
     const p = await Product.create([{
       ...input.product,
-      status: input.product.status ?? 'draft',
+      status: input.product.status ?? 'active',
       createdBy: adminId
     }], { session });
 

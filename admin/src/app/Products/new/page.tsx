@@ -451,6 +451,10 @@ export default function NewProductPage() {
     }
   }
 
+  const evens: number[] = Array.from({ length: 28 }, (_, i) => i * 2);
+  console.log("Evens:", evens);
+
+
   return (
     <div className="p-4 space-y-6 max-w-5xl">
       <div className="flex items-center justify-between">
@@ -488,7 +492,7 @@ export default function NewProductPage() {
             />
           </div>
           <div>
-            <Label className="m-2">Price (GBP)</Label>
+            <Label className="m-2">Price ($)</Label>
             <Input
               type="number"
               step="0.01"
@@ -540,7 +544,7 @@ export default function NewProductPage() {
             />
           </div>
           <div>
-            <Label className="m-2">Wholesale (£)</Label>
+            <Label className="m-2">Cost Price ($)</Label>
             <Input
               type="number"
               step="0.01"
@@ -573,11 +577,19 @@ export default function NewProductPage() {
             </div>
             <div>
               <Label className="m-2">Size</Label>
-              <Input
+              {/* <Input
                 value={sizeLabel}
                 onChange={(e) => setSizeLabel(e.target.value)}
                 placeholder="OS / S,M,L or S:10,M:5,UK 8:0"
-              />
+              /> */}
+
+              <select className=" px-2 py-2 border rounded w-full">
+                {evens.map((n) =>(
+                  <option  key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
             </div>
             
             <div className="flex items-end">
@@ -594,7 +606,7 @@ export default function NewProductPage() {
             Tip: add multiple sizes separated by commas. Use{" "}
             <code>size:qty</code> to override quantity per size (e.g.,{" "}
             <code>S:10,M:5</code>).
-          </p>
+          </p>  
 
           {/* ---------- Editable table ---------- */}
           <div className="overflow-x-auto border rounded">
@@ -625,7 +637,7 @@ export default function NewProductPage() {
                         <td className="p-2 align-middle">{i + 1}</td>
 
                         {/* Color */}
-                        <td className="p-2 align-middle">
+                        <td className="p-2 align-middle capitalize">
                           {isEdit ? (
                             <Input
                               value={draft?.colorName || ""}
@@ -641,7 +653,7 @@ export default function NewProductPage() {
                         </td>
 
                         {/* Size */}
-                        <td className="p-2 align-middle">
+                        <td className="p-2 align-middle capitalize">
                           {isEdit ? (
                             <Input
                               value={draft?.sizeLabel || ""}
