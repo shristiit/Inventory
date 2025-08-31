@@ -239,7 +239,7 @@ export default function ProductsPage() {
               <TableHead className="font-semibold">Title</TableHead>
               <TableHead className="font-semibold">Status</TableHead>
               <TableHead className="font-semibold">Price</TableHead>
-              <TableHead className="font-semibold">Variants</TableHead>
+              <TableHead className="font-semibold">Colors and Styles</TableHead>
               <TableHead className="font-semibold">Updated</TableHead>
             </TableRow>
           </TableHeader>
