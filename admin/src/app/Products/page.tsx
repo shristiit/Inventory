@@ -20,7 +20,7 @@ type ProductRow = {
   _id: string;
   styleNumber: string;
   title: string;
-  status: "Active" | "Inactive" | "Draft" | "Archived";
+  status: "Active" | "Inactive" | "Draft" | "Archived" | "active" | "inactive" | "draft" | "archived";
   price: number; // minor units
   updatedAt?: string;
   variantCount?: number;
@@ -32,13 +32,32 @@ type ListResponse = {
   rows: ProductRow[];
 };
 
-/** ---- Variant list (from GET /api/products/:id/variants) ---- */
-type VariantRow = {
+/** ---- Deep product (for variants + sizes) ---- */
+type SizeRow = {
+  _id: string;
+  label: string;
+  barcode: string;
+  totalQuantity?: number;
+  reservedTotal?: number;
+  sellableQuantity?: number;
+};
+
+type VariantDeep = {
   _id: string;
   sku: string;
+  status?: "Active" | "Inactive" | "active" | "inactive";
   color?: { name?: string; code?: string };
-  status?: "Active" | "Inactive";
-  // (sizes aren’t returned by this endpoint unless you add a populate)
+  sizes?: SizeRow[];
+};
+
+type ProductDeep = {
+  _id: string;
+  styleNumber: string;
+  title: string;
+  status: ProductRow["status"];
+  price: number; // minor units
+  updatedAt?: string;
+  variants?: VariantDeep[];
 };
 
 const ITEMS_PER_PAGE = 15;
@@ -59,19 +78,9 @@ export default function ProductsPage() {
   const [page, setPage] = useState(0); // 0-based for UI
   const [total, setTotal] = useState(0);
 
-  // Variants per product
-  const [variantMap, setVariantMap] = useState<Record<string, VariantRow[]>>(
-    {}
-  );
-  const [variantLoading, setVariantLoading] = useState<Record<string, boolean>>(
-    {}
-  );
-
-  // Totals per product (keep your existing structure if you had it)
-  const [qtyMap, setQtyMap] = useState<
-    Record<string, { total: number; reserved: number; sellable: number }>
-  >({});
-  const [qtyLoading, setQtyLoading] = useState<Record<string, boolean>>({});
+  // Deep product cache (variants + sizes) per product
+  const [deepMap, setDeepMap] = useState<Record<string, ProductDeep>>({});
+  const [deepLoading, setDeepLoading] = useState<Record<string, boolean>>({});
 
   const fetchPage = useCallback(async (uiPage: number) => {
     setLoading(true);
@@ -93,25 +102,23 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchPage(page);
   }, [page, fetchPage]);
-  console.log("products ==>", rows);
+
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(total / ITEMS_PER_PAGE)),
     [total]
   );
 
-  // Visible rows on this page
   const visible = rows;
 
-  /** ---- Fetch variants for currently visible products (lazy) ---- */
-  const fetchVariantsForVisible = useCallback(async () => {
+  /** Fetch deep product (variants + sizes) for visible products (lazy) */
+  const fetchDeepForVisible = useCallback(async () => {
     const idsToFetch = visible
       .map((r) => r._id)
-      .filter((id) => !variantMap[id] && !variantLoading[id]);
+      .filter((id) => !deepMap[id] && !deepLoading[id]);
 
     if (idsToFetch.length === 0) return;
 
-    // mark in-flight
-    setVariantLoading((prev) => {
+    setDeepLoading((prev) => {
       const next = { ...prev };
       idsToFetch.forEach((id) => {
         next[id] = true;
@@ -122,21 +129,18 @@ export default function ProductsPage() {
     try {
       const results = await Promise.allSettled(
         idsToFetch.map(async (id) => {
-          const { data } = await api.get<VariantRow[]>(
-            `/api/products/${id}/variants`
-          );
-          return { id, variants: data || [] };
+          const { data } = await api.get<ProductDeep>(`/api/products/${id}`);
+          return { id, deep: data };
         })
       );
-     console.log(results)
 
-      const add: Record<string, VariantRow[]> = {};
+      const add: Record<string, ProductDeep> = {};
       const done: Record<string, boolean> = {};
 
       results.forEach((r) => {
         if (r.status === "fulfilled") {
-          const { id, variants } = r.value;
-          add[id] = variants;
+          const { id, deep } = r.value;
+          add[id] = deep;
           done[id] = true;
         } else {
           const failedId =
@@ -146,66 +150,28 @@ export default function ProductsPage() {
       });
 
       if (Object.keys(add).length) {
-        setVariantMap((prev) => ({ ...prev, ...add }));
+        setDeepMap((prev) => ({ ...prev, ...add }));
       }
       if (Object.keys(done).length) {
-        setVariantLoading((prev) => {
+        setDeepLoading((prev) => {
           const next = { ...prev };
-          Object.keys(done).forEach((id) => {
-            delete next[id];
-          });
+          Object.keys(done).forEach((id) => delete next[id]);
           return next;
         });
       }
     } catch (e) {
       console.error(e);
-      // clear in-flight flags on error
-      setVariantLoading((prev) => {
+      setDeepLoading((prev) => {
         const next = { ...prev };
         idsToFetch.forEach((id) => delete next[id]);
         return next;
       });
     }
-  }, [visible, variantMap, variantLoading]);
+  }, [visible, deepMap, deepLoading]);
 
   useEffect(() => {
-    fetchVariantsForVisible();
-  }, [fetchVariantsForVisible]);
-
-  // (Optional) If you still want to compute and show totals, keep your existing logic here.
-  // For brevity, the following demo shows only the Variants column from the variants API.
-
-  // render a list of variant chips
-  function renderVariantChips(
-    vs?: VariantRow[] | undefined,
-    productId: string
-  ) {
-    if (!vs || vs.length === 0) return <span>—</span>;
-    const max = 6;
-    const head = vs.slice(0, max);
-    const extra = vs.length - head.length;
-    return (
-      <div className="flex flex-wrap gap-1">
-        {head.map((v) => {
-          const label = v.color?.name ? `${v.sku} ·${v.color.name} ${v.status}` : v.sku;
-          return (
-            <span
-              key={v._id}
-              className={`${v.status === "inactive" ? "bg-red-200 px-2 py-1 rounded-lg" : "bg-gray-200 px-2 py-1 rounded-lg"}`}
-              title={label}
-            >
-              {label}
-            </span>
-          );
-        })}
-        {extra > 0 && (
-          <span className="px-2 py-0.5 text-xs rounded-full bg-gray-200 text-gray-700">
-            +{extra} more
-          </span>
-        )}
-      </div>
-    );
-  }
+    fetchDeepForVisible();
+  }, [fetchDeepForVisible]);
 
   if (loading)
     return <div className="p-6 text-lg font-medium">Loading products…</div>;
@@ -239,57 +205,173 @@ export default function ProductsPage() {
               <TableHead className="font-semibold">Title</TableHead>
               <TableHead className="font-semibold">Status</TableHead>
               <TableHead className="font-semibold">Price</TableHead>
-              <TableHead className="font-semibold">Colors and Styles</TableHead>
+              <TableHead className="font-semibold">Color (Variant)</TableHead>
+              <TableHead className="font-semibold">Size</TableHead>
               <TableHead className="font-semibold">Updated</TableHead>
             </TableRow>
           </TableHeader>
+
           <TableBody>
             {visible.length === 0 ? (
               <TableRow>
-                <TableCell
-                  colSpan={6}
-                  className="text-center py-6 text-gray-500"
-                >
+                <TableCell colSpan={7} className="text-center py-6 text-gray-500">
                   No products found.
                 </TableCell>
               </TableRow>
             ) : (
               visible.map((p) => {
-                const vList = variantMap[p._id];
-                const vLoading = !!variantLoading[p._id];
+                const deep = deepMap[p._id];
+                const loadingDeep = !!deepLoading[p._id];
+                const variants = deep?.variants ?? [];
+
+                if (!deep && loadingDeep) {
+                  return (
+                    <TableRow key={p._id}>
+                      <TableCell className="font-mono">
+                        <Link href={`/products/${p._id}`} className="text-indigo-600 hover:underline">
+                          {p.styleNumber}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="capitalize">
+                        <Link href={`/products/${p._id}`} className="text-indigo-600 hover:underline">
+                          {p.title}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="capitalize">{p.status}</TableCell>
+                      <TableCell>{formatMinorGBP(p.price)}</TableCell>
+                      <TableCell colSpan={2}>Loading variants…</TableCell>
+                      <TableCell>
+                        {p.updatedAt ? new Date(p.updatedAt).toLocaleDateString("en-GB") : "—"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                }
+
+                // compute total rows this product will occupy = sum of sizes per variant (min 1)
+                const totalRowsForProduct = (variants?.length
+                  ? variants.reduce((sum, v) => sum + Math.max(1, (v.sizes?.length ?? 0)), 0)
+                  : 1);
+
+                // no variants case
+                if (!variants || variants.length === 0) {
+                  return (
+                    <TableRow key={p._id}>
+                      <TableCell className="font-mono">
+                        <Link href={`/products/${p._id}`} className="text-indigo-600 hover:underline">
+                          {p.styleNumber}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="capitalize">
+                        <Link href={`/products/${p._id}`} className="text-indigo-600 hover:underline">
+                          {p.title}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="capitalize">{p.status}</TableCell>
+                      <TableCell>{formatMinorGBP(p.price)}</TableCell>
+                      <TableCell>—</TableCell>
+                      <TableCell>—</TableCell>
+                      <TableCell>{p.updatedAt ? new Date(p.updatedAt).toLocaleDateString("en-GB") : "—"}</TableCell>
+                    </TableRow>
+                  );
+                }
+
+                // there ARE variants; explode down to the size level
+                let isFirstRowForProduct = true;
+
                 return (
-                  <TableRow
-                    key={p._id}
-                    className="hover:bg-indigo-50 transition-colors"
-                  >
-                    <TableCell className="font-mono">
-                      <Link
-                        href={`/products/${p._id}`}
-                        className="text-indigo-600 hover:underline"
-                      >
-                        {p.styleNumber}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="capitalize">
-                      <Link
-                        href={`/products/${p._id}`}
-                        className="text-indigo-600 hover:underline"
-                      >
-                        {p.title}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="capitalize">{p.status}</TableCell>
-                    <TableCell className="capitalize">{formatMinorGBP(p.price)}</TableCell>
+                  <React.Fragment key={p._id}>
+                    {variants.map((v) => {
+                      const sizes = (v.sizes && v.sizes.length > 0) ? v.sizes : [null as unknown as SizeRow];
+                      const variantRowSpan = sizes.length;
 
-                    {/* Variants from GET /api/products/:id/variants */}
-                    <TableCell className="capitalize">{renderVariantChips(vList, p._id)}</TableCell>
+                      // badge for variant status
+                      const vStatus = (v.status || "active").toString().toLowerCase();
+                      const badgeClass =
+                        vStatus === "inactive"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-emerald-100 text-emerald-700";
 
-                    <TableCell>
-                      {p.updatedAt
-                        ? new Date(p.updatedAt).toLocaleDateString("en-GB")
-                        : "—"}
-                    </TableCell>
-                  </TableRow>
+                      return sizes.map((s, idx) => {
+                        const isFirstSizeOfVariant = idx === 0;
+
+                        const row = (
+                          <TableRow key={`${p._id}-${v._id}-${s ? s._id : "nosize"}-${idx}`} className="align-top">
+                            {/* product cells once per product group, spanning all its size rows */}
+                            {isFirstRowForProduct && (
+                              <>
+                                <TableCell rowSpan={totalRowsForProduct} className="font-mono align-top">
+                                  <Link href={`/products/${p._id}`} className="text-indigo-600 hover:underline">
+                                    {p.styleNumber}
+                                  </Link>
+                                </TableCell>
+                                <TableCell rowSpan={totalRowsForProduct} className="capitalize align-top">
+                                  <Link href={`/products/${p._id}`} className="text-indigo-600 hover:underline">
+                                    {p.title}
+                                  </Link>
+                                </TableCell>
+                                <TableCell rowSpan={totalRowsForProduct} className="capitalize align-top">
+                                  {p.status}
+                                </TableCell>
+                                <TableCell rowSpan={totalRowsForProduct} className="align-top">
+                                  {formatMinorGBP(p.price)}
+                                </TableCell>
+                              </>
+                            )}
+
+                            {/* variant cell once per variant, spanning its sizes */}
+                            {isFirstSizeOfVariant && (
+                              <TableCell rowSpan={variantRowSpan} className="align-top">
+                                <div className="flex items-center gap-2">
+                                  <span className={`px-2 py-0.5 text-xs rounded-full ${badgeClass}`}>
+                                    {v.status ?? "Active"}
+                                  </span>
+                                  <span>
+                                    {v.color?.name ? `${v.color.name} (${v.sku})` : v.sku}
+                                  </span>
+                                </div>
+                              </TableCell>
+                            )}
+
+                            {/* size cell (one per row) */}
+                            <TableCell className="align-top">
+                              {s ? (
+                                <div>
+                                  <div className="font-medium">{s.label}</div>
+                                  <div className="text-xs text-gray-500 font-mono">{s.barcode}</div>
+                                  {/* Optional: quantities */}
+                                  {(typeof s.totalQuantity === "number" ||
+                                    typeof s.reservedTotal === "number" ||
+                                    typeof s.sellableQuantity === "number") && (
+                                    <div className="text-xs text-gray-600 mt-1">
+                                      {typeof s.totalQuantity === "number" && <>Total: {s.totalQuantity} </>}
+                                      {typeof s.reservedTotal === "number" && <>· Reserved: {s.reservedTotal} </>}
+                                      {typeof s.sellableQuantity === "number" && <>· Sellable: {s.sellableQuantity}</>}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                "—"
+                              )}
+                            </TableCell>
+
+                            {/* updatedAt only once per product group */}
+                            {isFirstRowForProduct && (
+                              <TableCell rowSpan={totalRowsForProduct} className="align-top">
+                                {p.updatedAt
+                                  ? new Date(p.updatedAt).toLocaleDateString("en-GB")
+                                  : "—"}
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        );
+
+                        // flip the flag after rendering the first size row of the product
+                        if (isFirstRowForProduct) isFirstRowForProduct = false;
+
+                        return row;
+                      });
+                    })}
+                  </React.Fragment>
                 );
               })
             )}

@@ -16,7 +16,15 @@ import {
   TableHead,
   TableRow,
 } from "@/components/ui/table";
-import { Pencil, Trash2, Check, X as XIcon, ChevronDown, ChevronRight, Plus } from "lucide-react";
+import {
+  Pencil,
+  Trash2,
+  Check,
+  X as XIcon,
+  ChevronDown,
+  ChevronRight,
+  Plus,
+} from "lucide-react";
 
 /* ---------- Types ---------- */
 type Size = {
@@ -47,8 +55,16 @@ type ProductDeep = {
   variants?: Variant[];
 };
 
-const PRODUCT_STATUSES: ProductDeep["status"][] = ["active", "inactive", "draft", "archived"];
-const VARIANT_STATUSES: NonNullable<Variant["status"]>[] = ["active", "inactive"];
+const PRODUCT_STATUSES: ProductDeep["status"][] = [
+  "active",
+  "inactive",
+  "draft",
+  "archived",
+];
+const VARIANT_STATUSES: NonNullable<Variant["status"]>[] = [
+  "active",
+  "inactive",
+];
 
 /* ---------- Helpers ---------- */
 function poundsFromMinor(minor?: number) {
@@ -63,6 +79,45 @@ function minorFromPounds(s: string) {
 function rand(n = 5) {
   return Math.random().toString(36).slice(-n).toUpperCase();
 }
+function tokenize(s: string) {
+  return (s || "")
+    .replace(/\s+/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase();
+}
+/** Parse "S,M,L" or "S:10,M:5,UK 8:0" -> [{label, quantity}] */
+function parseSizesInput(
+  input: string,
+  defaultQty: number
+): Array<{ label: string; quantity: number }> {
+  const out: Array<{ label: string; quantity: number }> = [];
+  for (const raw of (input || "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean)) {
+    const [labelPart, qtyPart] = raw.split(":");
+    const label = (labelPart || "").trim();
+    if (!label) continue;
+    let qty = defaultQty;
+    if (qtyPart != null && qtyPart.trim() !== "") {
+      const qn = Number(qtyPart);
+      if (Number.isFinite(qn) && qn >= 0) qty = qn;
+    }
+    out.push({ label, quantity: qty });
+  }
+  return out;
+}
+
+/* ---------- Size editor draft ---------- */
+type SizeDraft = {
+  _id: string;
+  label: string;
+  barcode: string;
+  // Optional quick stock adjust (single location)
+  onHand?: number | "";
+  reserved?: number | "";
+  location?: string;
+};
 
 export default function ProductDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -71,6 +126,9 @@ export default function ProductDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [sizesInput, setSizesInput] = useState("");
+  const [defQty, setDefQty] = useState<number>(0);
+  const [loc, setLoc] = useState("WH-DEFAULT");
 
   // product fields
   const [styleNumber, setStyleNumber] = useState("");
@@ -88,26 +146,28 @@ export default function ProductDetailsPage() {
   const [editingVariantId, setEditingVariantId] = useState<string | null>(null);
   const [draftVariant, setDraftVariant] = useState<Variant | null>(null);
 
-  // add new variant (+ initial size/qty)
+  // size inline edit
+  const [editingSizeId, setEditingSizeId] = useState<string | null>(null);
+  const [sizeDraft, setSizeDraft] = useState<SizeDraft | null>(null);
+
+  // add new variant (+ multiple sizes)
   const [addingVariant, setAddingVariant] = useState(false);
   const [newVariant, setNewVariant] = useState<{
     sku: string;
     colorName: string;
     colorCode: string;
     status: "active" | "inactive";
-    sizeLabel: string;
-    quantity: number;
-    location: string;
-    barcode: string;
+    sizesInput: string; // e.g. "S,M,L" or "S:10,M:5"
+    defaultQty: number; // used when a size has no :qty
+    location: string; // inventory location for created sizes
   }>({
     sku: "",
     colorName: "",
     colorCode: "",
     status: "active",
-    sizeLabel: "OS",
-    quantity: 0,
+    sizesInput: "",
+    defaultQty: 0,
     location: "WH-DEFAULT",
-    barcode: "",
   });
 
   /* ---------- Load product deep ---------- */
@@ -133,6 +193,8 @@ export default function ProductDetailsPage() {
       setVariants(data.variants || []);
       setEditingVariantId(null);
       setDraftVariant(null);
+      setEditingSizeId(null);
+      setSizeDraft(null);
     } catch (e: any) {
       setErr(e?.response?.data?.message || "Failed to load product.");
     } finally {
@@ -231,7 +293,11 @@ export default function ProductDetailsPage() {
     setVariants((prev) =>
       prev.map((v) =>
         v._id === vId
-          ? { ...v, ...patch, color: { ...(v.color || {}), ...(patch.color || {}) } }
+          ? {
+              ...v,
+              ...patch,
+              color: { ...(v.color || {}), ...(patch.color || {}) },
+            }
           : v
       )
     );
@@ -244,7 +310,10 @@ export default function ProductDetailsPage() {
         status: (v.status as any) || "active",
         color: { name: v.color?.name || "", code: v.color?.code || undefined },
       };
-      const { data } = await api.patch(`/api/products/variants/${v._id}`, payload);
+      const { data } = await api.patch(
+        `/api/products/variants/${v._id}`,
+        payload
+      );
       updateVariantLocal(v._id, {
         sku: data.sku ?? payload.sku ?? v.sku,
         status: data.status ?? payload.status ?? v.status,
@@ -258,7 +327,8 @@ export default function ProductDetailsPage() {
   }
 
   async function deleteVariant(vId: string) {
-    if (!confirm("Delete this variant? Its sizes will be archived too.")) return;
+    if (!confirm("Delete this variant? Its sizes will be archived too."))
+      return;
     try {
       await api.delete(`/api/products/variants/${vId}`);
       setVariants((prev) => prev.filter((v) => v._id !== vId));
@@ -267,16 +337,26 @@ export default function ProductDetailsPage() {
     }
   }
 
+  /** ADD VARIANT with MULTIPLE SIZES (comma-separated) */
   async function addVariant() {
     // basic checks
     if (!newVariant.sku.trim() || !newVariant.colorName.trim()) {
       alert("SKU and Color name are required.");
       return;
     }
+    const sizeEntries = parseSizesInput(
+      newVariant.sizesInput,
+      Math.max(0, Number(newVariant.defaultQty || 0))
+    );
+    if (sizeEntries.length === 0) {
+      alert('Add at least one size (e.g., "S,M,L" or "S:10,M:5").');
+      return;
+    }
+
     const cleanSku = newVariant.sku.trim().toUpperCase();
 
     try {
-      // 1) create variant
+      // 1) create variant (color-level)
       const { data: created } = await api.post(`/api/products/${id}/variants`, {
         sku: cleanSku,
         color: {
@@ -287,36 +367,39 @@ export default function ProductDetailsPage() {
         status: newVariant.status,
       });
 
-      // try to get the new variant id from response
+      // obtain variantId (fallback to refresh+find)
       let variantId: string | undefined = created?._id;
+      if (!variantId) {
+        await refreshProduct();
+        const v = (variants || []).find(
+          (x) => x.sku?.toUpperCase() === cleanSku
+        );
+        variantId = v?._id;
+      }
 
-      // 2) if initial quantity/size provided, create size with inventory
-      const qty = Math.max(0, Number(newVariant.quantity || 0));
-      const sizeLabel = (newVariant.sizeLabel || "OS").trim();
-      const location = (newVariant.location || "WH-DEFAULT").trim();
-      const barcode =
-        newVariant.barcode.trim() ||
-        `${cleanSku}-${sizeLabel.replace(/\s+/g, "").toUpperCase()}-${rand(5)}`;
+      // 2) create sizes under the newly created variant
+      if (variantId) {
+        const location = (newVariant.location || "WH-DEFAULT").trim();
 
-      if ((qty > 0 || sizeLabel) ) {
-        // if no id in response, refresh + find by sku
-        if (!variantId) {
-          await refreshProduct();
-          const v = (variants || []).find((x) => x.sku?.toUpperCase() === cleanSku);
-          variantId = v?._id;
-        }
+        await Promise.allSettled(
+          sizeEntries.map(async ({ label, quantity }) => {
+            const sizeTok = tokenize(label || "OS");
+            const barcode = `${cleanSku}-${sizeTok}-${rand(5)}`;
 
-        if (variantId) {
-          try {
-            await api.post(`/api/products/variants/${variantId}/sizes`, {
-              label: sizeLabel,
+            return api.post(`/api/products/variants/${variantId}/sizes`, {
+              label: label || "OS",
               barcode,
-              inventory: [{ location, onHand: qty, onOrder: 0, reserved: 0 }],
+              inventory: [
+                {
+                  location,
+                  onHand: Math.max(0, Number(quantity || 0)),
+                  onOrder: 0,
+                  reserved: 0,
+                },
+              ],
             });
-          } catch (e: any) {
-            console.warn("Failed to create initial size/inventory:", e?.response?.data || e?.message);
-          }
-        }
+          })
+        );
       }
 
       // 3) cleanup and refresh UI
@@ -326,10 +409,9 @@ export default function ProductDetailsPage() {
         colorName: "",
         colorCode: "",
         status: "active",
-        sizeLabel: "OS",
-        quantity: 0,
+        sizesInput: "",
+        defaultQty: 0,
         location: "WH-DEFAULT",
-        barcode: "",
       });
       setAddingVariant(false);
     } catch (e: any) {
@@ -337,6 +419,109 @@ export default function ProductDetailsPage() {
     }
   }
 
+  /* ---------- Size actions ---------- */
+  function startEditSize(s: Size, opts?: { location?: string }) {
+    setEditingSizeId(s._id);
+    setSizeDraft({
+      _id: s._id,
+      label: s.label,
+      barcode: s.barcode,
+      onHand: "", // optional quick adjust
+      reserved: "",
+      location: opts?.location || "WH-DEFAULT",
+    });
+  }
+  function cancelEditSize() {
+    setEditingSizeId(null);
+    setSizeDraft(null);
+  }
+  async function saveSize() {
+    if (!editingSizeId || !sizeDraft) return;
+    try {
+      const payload: any = {
+        label: (sizeDraft.label || "").trim(),
+        barcode: (sizeDraft.barcode || "").trim(),
+      };
+      const hasStockEdit =
+        (sizeDraft.onHand !== "" && sizeDraft.onHand != null) ||
+        (sizeDraft.reserved !== "" && sizeDraft.reserved != null);
+      if (hasStockEdit) {
+        payload.inventory = [
+          {
+            location: sizeDraft.location || "WH-DEFAULT",
+            onHand:
+              sizeDraft.onHand === "" || sizeDraft.onHand == null
+                ? undefined
+                : Math.max(0, Number(sizeDraft.onHand)),
+            onOrder: 0,
+            reserved:
+              sizeDraft.reserved === "" || sizeDraft.reserved == null
+                ? undefined
+                : Math.max(0, Number(sizeDraft.reserved)),
+          },
+        ];
+      }
+
+      await api.patch(`/api/products/sizes/${editingSizeId}`, payload);
+      await refreshProduct();
+      setEditingSizeId(null);
+      setSizeDraft(null);
+    } catch (e: any) {
+      alert(e?.response?.data?.message || "Failed to save size.");
+    }
+  }
+  async function deleteSize(sizeId: string) {
+    if (!confirm("Delete this size?")) return;
+    try {
+      await api.delete(`/api/products/sizes/${sizeId}`);
+      await refreshProduct();
+    } catch (e: any) {
+      alert(e?.response?.data?.message || "Failed to delete size.");
+    }
+  }
+
+  /* ---------- Add more sizes to an existing variant ---------- */
+  async function addSizesToVariant(
+    variantId: string,
+    sku: string,
+    sizesInput: string,
+    defaultQty: number,
+    location: string
+  ) {
+    const sizeEntries = parseSizesInput(
+      sizesInput,
+      Math.max(0, Number(defaultQty || 0))
+    );
+    if (sizeEntries.length === 0) {
+      alert('Add at least one size (e.g., "S,M,L" or "S:10,M:5").');
+      return;
+    }
+    try {
+      await Promise.allSettled(
+        sizeEntries.map(({ label, quantity }) => {
+          const sizeTok = tokenize(label || "OS");
+          const barcode = `${sku}-${sizeTok}-${rand(5)}`;
+          return api.post(`/api/products/variants/${variantId}/sizes`, {
+            label: label || "OS",
+            barcode,
+            inventory: [
+              {
+                location: (location || "WH-DEFAULT").trim(),
+                onHand: Math.max(0, Number(quantity || 0)),
+                onOrder: 0,
+                reserved: 0,
+              },
+            ],
+          });
+        })
+      );
+      await refreshProduct();
+    } catch (e: any) {
+      alert(e?.response?.data?.message || "Failed to add sizes.");
+    }
+  }
+
+  /* ---------- UI helpers ---------- */
   function toggleExpand(vId: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -344,6 +529,73 @@ export default function ProductDetailsPage() {
       else next.add(vId);
       return next;
     });
+  }
+  async function deleteSize(sizeId: string, variantId: string) {
+    if (!confirm("Delete this size?")) return;
+    try {
+      // Call the API
+      await api.delete(`/api/products/sizes/${sizeId}`);
+
+      // Optimistically update local state so the row disappears immediately
+      setVariants((prev) =>
+        prev.map((v) =>
+          v._id === variantId
+            ? { ...v, sizes: (v.sizes || []).filter((s) => s._id !== sizeId) }
+            : v
+        )
+      );
+
+      // If you still want a full refresh, keep this line.
+      // If your API returns archived sizes, REMOVE this line.
+      // await refreshProduct();
+    } catch (e: any) {
+      console.error("Delete size failed:", e?.response || e);
+      alert(e?.response?.data?.message || "Failed to delete size.");
+    }
+  }
+
+  function renderSizeChips(sizes?: Size[], onChipClick?: (s: Size) => void) {
+    if (!sizes || sizes.length === 0) return <span>—</span>;
+    const max = 8;
+    const head = sizes.slice(0, max);
+    const extra = sizes.length - head.length;
+
+    return (
+      <div className="flex flex-wrap gap-1">
+        {head.map((s) =>
+          onChipClick ? (
+            <button
+              key={s._id}
+              type="button"
+              onClick={() => onChipClick(s)}
+              className="px-2 py-0.5 text-xs rounded-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
+              title={`Edit ${s.label}`}
+            >
+              {s.label}
+            </button>
+          ) : (
+            <span
+              key={s._id}
+              className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-800"
+              title={s.label}
+            >
+              {s.label}
+            </span>
+          )
+        )}
+        {extra > 0 && (
+          <span className="px-2 py-0.5 text-xs rounded-full bg-gray-200 text-gray-700">
+            +{extra} more
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  function openSizeEditor(variantId: string, s: Size) {
+    // Ensure the row is expanded, then start editing
+    setExpanded((prev) => new Set(prev).add(variantId));
+    startEditSize(s);
   }
 
   /* ---------- UI ---------- */
@@ -364,11 +616,19 @@ export default function ProductDetailsPage() {
         <section className="grid grid-cols-1 md:grid-cols-2 gap-4 border rounded p-4">
           <div>
             <Label className="m-2">Style number</Label>
-            <Input value={styleNumber} onChange={(e) => setStyleNumber(e.target.value)} required />
+            <Input
+              value={styleNumber}
+              onChange={(e) => setStyleNumber(e.target.value)}
+              required
+            />
           </div>
           <div>
             <Label className="m-2">Title</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+            />
           </div>
 
           <div>
@@ -387,7 +647,9 @@ export default function ProductDetailsPage() {
             <select
               className="w-full h-10 border rounded px-3"
               value={status}
-              onChange={(e) => setStatus(e.target.value as ProductDeep["status"])}
+              onChange={(e) =>
+                setStatus(e.target.value as ProductDeep["status"])
+              }
             >
               {PRODUCT_STATUSES.map((s) => (
                 <option key={s} value={s}>
@@ -399,7 +661,11 @@ export default function ProductDetailsPage() {
 
           <div className="md:col-span-2">
             <Label className="m-2">Description</Label>
-            <Textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
+            <Textarea
+              rows={4}
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+            />
           </div>
         </section>
 
@@ -429,10 +695,18 @@ export default function ProductDetailsPage() {
                 placeholder="value (e.g., Aurum)"
               />
               <div className="flex gap-2">
-                <Button type="button" variant="secondary" onClick={() => updateAttrVal(k, "")}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => updateAttrVal(k, "")}
+                >
                   Clear
                 </Button>
-                <Button type="button" variant="destructive" onClick={() => removeAttr(k)}>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => removeAttr(k)}
+                >
                   Remove
                 </Button>
               </div>
@@ -444,10 +718,19 @@ export default function ProductDetailsPage() {
           <Button type="submit" disabled={saving}>
             {saving ? "Saving…" : "Save product"}
           </Button>
-          <Button type="button" variant="secondary" onClick={() => router.refresh()}>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => router.refresh()}
+          >
             Refresh
           </Button>
-          <Button type="button" variant="destructive" className="ml-auto" onClick={onDeleteProduct}>
+          <Button
+            type="button"
+            variant="destructive"
+            className="ml-auto"
+            onClick={onDeleteProduct}
+          >
             Archive product
           </Button>
         </div>
@@ -459,9 +742,13 @@ export default function ProductDetailsPage() {
           <h2 className="font-medium">Colors and Sizes</h2>
 
           {!addingVariant ? (
-            <Button type="button" variant="secondary" onClick={() => setAddingVariant(true)}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setAddingVariant(true)}
+            >
               <Plus className="h-4 w-4 mr-2" />
-              Add Color and Size
+              Add Color & Sizes
             </Button>
           ) : (
             <div className="w-full border rounded p-3 space-y-3">
@@ -470,7 +757,9 @@ export default function ProductDetailsPage() {
                   <Label className="m-2">SKU</Label>
                   <Input
                     value={newVariant.sku}
-                    onChange={(e) => setNewVariant({ ...newVariant, sku: e.target.value })}
+                    onChange={(e) =>
+                      setNewVariant({ ...newVariant, sku: e.target.value })
+                    }
                     placeholder="e.g., STY-100001-BLK"
                   />
                 </div>
@@ -478,18 +767,38 @@ export default function ProductDetailsPage() {
                   <Label className="m-2">Color name</Label>
                   <Input
                     value={newVariant.colorName}
-                    onChange={(e) => setNewVariant({ ...newVariant, colorName: e.target.value })}
+                    onChange={(e) =>
+                      setNewVariant({
+                        ...newVariant,
+                        colorName: e.target.value,
+                      })
+                    }
                     placeholder="Black"
                   />
                 </div>
-                
+                <div>
+                  <Label className="m-2">Color code (optional)</Label>
+                  <Input
+                    value={newVariant.colorCode}
+                    onChange={(e) =>
+                      setNewVariant({
+                        ...newVariant,
+                        colorCode: e.target.value,
+                      })
+                    }
+                    placeholder="#111111"
+                  />
+                </div>
                 <div>
                   <Label className="m-2">Status</Label>
                   <select
                     className="w-full h-10 border rounded px-3"
                     value={newVariant.status}
                     onChange={(e) =>
-                      setNewVariant({ ...newVariant, status: e.target.value as "active" | "inactive" })
+                      setNewVariant({
+                        ...newVariant,
+                        status: e.target.value as "active" | "inactive",
+                      })
                     }
                   >
                     {VARIANT_STATUSES.map((s) => (
@@ -499,43 +808,45 @@ export default function ProductDetailsPage() {
                     ))}
                   </select>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <div>
-                  <Label className="m-2">Size label</Label>
-                  <Input
-                    value={newVariant.sizeLabel}
-                    onChange={(e) => setNewVariant({ ...newVariant, sizeLabel: e.target.value })}
-                    placeholder="OS / S / M / UK 9"
-                  />
-                </div>
-                <div>
-                  <Label className="m-2">Quantity (on hand)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={newVariant.quantity}
-                    onChange={(e) =>
-                      setNewVariant({ ...newVariant, quantity: Math.max(0, Number(e.target.value || 0)) })
-                    }
-                    placeholder="0"
-                  />
-                </div>
                 <div>
                   <Label className="m-2">Location</Label>
                   <Input
                     value={newVariant.location}
-                    onChange={(e) => setNewVariant({ ...newVariant, location: e.target.value })}
+                    onChange={(e) =>
+                      setNewVariant({ ...newVariant, location: e.target.value })
+                    }
                     placeholder="WH-DEFAULT"
                   />
                 </div>
-                <div>
-                  <Label className="m-2">Barcode (optional)</Label>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="md:col-span-2">
+                  <Label className="m-2">Sizes</Label>
                   <Input
-                    value={newVariant.barcode}
-                    onChange={(e) => setNewVariant({ ...newVariant, barcode: e.target.value })}
-                    placeholder="auto if left blank"
+                    value={newVariant.sizesInput}
+                    onChange={(e) =>
+                      setNewVariant({
+                        ...newVariant,
+                        sizesInput: e.target.value,
+                      })
+                    }
+                    placeholder='OS / "S,M,L" or "S:10,M:5,UK 8:0"'
+                  />
+                </div>
+                <div>
+                  <Label className="m-2">Default Qty</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={newVariant.defaultQty}
+                    onChange={(e) =>
+                      setNewVariant({
+                        ...newVariant,
+                        defaultQty: Math.max(0, Number(e.target.value || 0)),
+                      })
+                    }
+                    placeholder="0"
                   />
                 </div>
               </div>
@@ -544,7 +855,11 @@ export default function ProductDetailsPage() {
                 <Button type="button" onClick={addVariant}>
                   Save
                 </Button>
-                <Button type="button" variant="secondary" onClick={() => setAddingVariant(false)}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setAddingVariant(false)}
+                >
                   Cancel
                 </Button>
               </div>
@@ -560,13 +875,19 @@ export default function ProductDetailsPage() {
                 <TableHead className="font-semibold">SKU</TableHead>
                 <TableHead className="font-semibold">Color</TableHead>
                 <TableHead className="font-semibold">Status</TableHead>
-                <TableHead className="font-semibold text-right">Actions</TableHead>
+                <TableHead className="font-semibold">Sizes</TableHead>
+                <TableHead className="font-semibold text-right">
+                  Actions
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {variants.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-6 text-gray-500">
+                  <TableCell
+                    colSpan={6}
+                    className="text-center py-6 text-gray-500"
+                  >
                     No Colors yet.
                   </TableCell>
                 </TableRow>
@@ -574,6 +895,8 @@ export default function ProductDetailsPage() {
                 variants.map((v) => {
                   const isEditing = editingVariantId === v._id;
                   const draft = isEditing ? draftVariant : null;
+
+                  // local controls to add sizes to this variant
 
                   return (
                     <React.Fragment key={v._id}>
@@ -583,9 +906,15 @@ export default function ProductDetailsPage() {
                           <button
                             className="p-1 rounded hover:bg-gray-100"
                             onClick={() => toggleExpand(v._id)}
-                            title={expanded.has(v._id) ? "Hide sizes" : "Show sizes"}
+                            title={
+                              expanded.has(v._id) ? "Hide sizes" : "Show sizes"
+                            }
                           >
-                            {expanded.has(v._id) ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                            {expanded.has(v._id) ? (
+                              <ChevronDown size={16} />
+                            ) : (
+                              <ChevronRight size={16} />
+                            )}
                           </button>
                         </TableCell>
 
@@ -595,7 +924,9 @@ export default function ProductDetailsPage() {
                             <Input
                               value={draft?.sku || ""}
                               onChange={(e) =>
-                                setDraftVariant((d) => (d ? { ...d, sku: e.target.value } : d))
+                                setDraftVariant((d) =>
+                                  d ? { ...d, sku: e.target.value } : d
+                                )
                               }
                             />
                           ) : (
@@ -611,7 +942,13 @@ export default function ProductDetailsPage() {
                               onChange={(e) =>
                                 setDraftVariant((d) =>
                                   d
-                                    ? { ...d, color: { ...(d.color || {}), name: e.target.value } }
+                                    ? {
+                                        ...d,
+                                        color: {
+                                          ...(d.color || {}),
+                                          name: e.target.value,
+                                        },
+                                      }
                                     : d
                                 )
                               }
@@ -621,8 +958,6 @@ export default function ProductDetailsPage() {
                           )}
                         </TableCell>
 
-                       
-
                         {/* Status */}
                         <TableCell className="align-middle">
                           {isEditing ? (
@@ -630,7 +965,14 @@ export default function ProductDetailsPage() {
                               className="w-full h-10 border rounded px-3"
                               value={draft?.status || "active"}
                               onChange={(e) =>
-                                setDraftVariant((d) => (d ? { ...d, status: e.target.value as any } : d))
+                                setDraftVariant((d) =>
+                                  d
+                                    ? {
+                                        ...d,
+                                        status: e.target.value as any,
+                                      }
+                                    : d
+                                )
                               }
                             >
                               {VARIANT_STATUSES.map((s) => (
@@ -644,11 +986,22 @@ export default function ProductDetailsPage() {
                           )}
                         </TableCell>
 
+                        {/* Size chips (click to edit) */}
+                        <TableCell className="align-middle">
+                          {renderSizeChips(v.sizes, (s) =>
+                            openSizeEditor(v._id, s)
+                          )}
+                        </TableCell>
+
                         {/* Actions */}
                         <TableCell className="align-middle text-right">
                           {isEditing ? (
                             <div className="flex justify-end gap-2">
-                              <Button type="button" size="sm" onClick={() => draft && saveVariant(draft)}>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => draft && saveVariant(draft)}
+                              >
                                 <Check className="h-4 w-4 mr-2" />
                                 Save
                               </Button>
@@ -691,7 +1044,7 @@ export default function ProductDetailsPage() {
                                 type="button"
                                 size="sm"
                                 variant="destructive"
-                                onClick={() => deleteVariant(v._id)}
+                                onClick={() => deleteSize(s._id, v._id)}
                               >
                                 <Trash2 className="h-4 w-4 mr-2" />
                                 Delete
@@ -701,10 +1054,65 @@ export default function ProductDetailsPage() {
                         </TableCell>
                       </TableRow>
 
-                      {/* Expanded: sizes table */}
+                      {/* Expanded: sizes table + inline editor + add sizes */}
                       {expanded.has(v._id) && (
                         <TableRow>
                           <TableCell colSpan={6} className="bg-gray-50">
+                            {/* Add more sizes to this variant */}
+                            <div className="border rounded p-3 mb-3">
+                              <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+                                <div className="md:col-span-3">
+                                  <Label className="m-2">Add sizes</Label>
+                                  <Input
+                                    value={sizesInput}
+                                    onChange={(e) =>
+                                      setSizesInput(e.target.value)
+                                    }
+                                    placeholder='e.g. "S,M,L" or "S:10,M:5,XL:2"'
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="m-2">Default Qty</Label>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    value={defQty}
+                                    onChange={(e) =>
+                                      setDefQty(
+                                        Math.max(0, Number(e.target.value || 0))
+                                      )
+                                    }
+                                    placeholder="0"
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="m-2">Location</Label>
+                                  <Input
+                                    value={loc}
+                                    onChange={(e) => setLoc(e.target.value)}
+                                    placeholder="WH-DEFAULT"
+                                  />
+                                </div>
+                                <div className="flex justify-end">
+                                  <Button
+                                    type="button"
+                                    onClick={() =>
+                                      addSizesToVariant(
+                                        v._id,
+                                        v.sku,
+                                        sizesInput,
+                                        defQty,
+                                        loc
+                                      )
+                                    }
+                                  >
+                                    Add sizes
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Sizes table */}
                             {v.sizes && v.sizes.length > 0 ? (
                               <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
@@ -713,25 +1121,234 @@ export default function ProductDetailsPage() {
                                       <th className="text-left p-2">Size</th>
                                       <th className="text-left p-2">Barcode</th>
                                       <th className="text-left p-2">Total</th>
-                                      <th className="text-left p-2">Reserved</th>
-                                      <th className="text-left p-2">Sellable</th>
+                                      <th className="text-left p-2">
+                                        Reserved
+                                      </th>
+                                      <th className="text-left p-2">
+                                        Sellable
+                                      </th>
+                                      <th className="text-right p-2">
+                                        Actions
+                                      </th>
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {v.sizes.map((s) => (
-                                      <tr key={s._id} className="border-t">
-                                        <td className="p-2">{s.label}</td>
-                                        <td className="p-2 font-mono">{s.barcode}</td>
-                                        <td className="p-2">{s.totalQuantity ?? "—"}</td>
-                                        <td className="p-2">{s.reservedTotal ?? "—"}</td>
-                                        <td className="p-2">{s.sellableQuantity ?? "—"}</td>
-                                      </tr>
-                                    ))}
+                                    {v.sizes.map((s) => {
+                                      const isSizeEditing =
+                                        editingSizeId === s._id;
+                                      return (
+                                        <tr key={s._id} className="border-t">
+                                          {/* Size label */}
+                                          <td className="p-2 align-middle">
+                                            {isSizeEditing ? (
+                                              <Input
+                                                value={sizeDraft?.label ?? ""}
+                                                onChange={(e) =>
+                                                  setSizeDraft((d) =>
+                                                    d
+                                                      ? {
+                                                          ...d,
+                                                          label: e.target.value,
+                                                        }
+                                                      : d
+                                                  )
+                                                }
+                                              />
+                                            ) : (
+                                              s.label
+                                            )}
+                                          </td>
+
+                                          {/* Barcode */}
+                                          <td className="p-2 align-middle">
+                                            {isSizeEditing ? (
+                                              <Input
+                                                value={sizeDraft?.barcode ?? ""}
+                                                onChange={(e) =>
+                                                  setSizeDraft((d) =>
+                                                    d
+                                                      ? {
+                                                          ...d,
+                                                          barcode:
+                                                            e.target.value,
+                                                        }
+                                                      : d
+                                                  )
+                                                }
+                                              />
+                                            ) : (
+                                              <span className="font-mono">
+                                                {s.barcode}
+                                              </span>
+                                            )}
+                                          </td>
+
+                                          {/* Totals (display) */}
+                                          <td className="p-2 align-middle">
+                                            {s.totalQuantity ?? "—"}
+                                          </td>
+                                          <td className="p-2 align-middle">
+                                            {s.reservedTotal ?? "—"}
+                                          </td>
+                                          <td className="p-2 align-middle">
+                                            {s.sellableQuantity ?? "—"}
+                                          </td>
+
+                                          {/* Actions / inline save */}
+                                          <td className="p-2 align-middle text-right">
+                                            {isSizeEditing ? (
+                                              <div className="flex flex-col gap-2 items-end">
+                                                {/* Optional quick stock adjust */}
+                                                <div className="grid grid-cols-3 gap-2 w-full md:w-2/3">
+                                                  <div>
+                                                    <Label className="m-2 text-xs">
+                                                      On hand (opt.)
+                                                    </Label>
+                                                    <Input
+                                                      type="number"
+                                                      min={0}
+                                                      value={
+                                                        sizeDraft?.onHand ?? ""
+                                                      }
+                                                      onChange={(e) => {
+                                                        const v =
+                                                          e.target.value;
+                                                        setSizeDraft((d) =>
+                                                          d
+                                                            ? {
+                                                                ...d,
+                                                                onHand:
+                                                                  v === ""
+                                                                    ? ""
+                                                                    : Math.max(
+                                                                        0,
+                                                                        Number(
+                                                                          v
+                                                                        )
+                                                                      ),
+                                                              }
+                                                            : d
+                                                        );
+                                                      }}
+                                                      placeholder="leave blank"
+                                                    />
+                                                  </div>
+                                                  <div>
+                                                    <Label className="m-2 text-xs">
+                                                      Reserved (opt.)
+                                                    </Label>
+                                                    <Input
+                                                      type="number"
+                                                      min={0}
+                                                      value={
+                                                        sizeDraft?.reserved ??
+                                                        ""
+                                                      }
+                                                      onChange={(e) => {
+                                                        const v =
+                                                          e.target.value;
+                                                        setSizeDraft((d) =>
+                                                          d
+                                                            ? {
+                                                                ...d,
+                                                                reserved:
+                                                                  v === ""
+                                                                    ? ""
+                                                                    : Math.max(
+                                                                        0,
+                                                                        Number(
+                                                                          v
+                                                                        )
+                                                                      ),
+                                                              }
+                                                            : d
+                                                        );
+                                                      }}
+                                                      placeholder="leave blank"
+                                                    />
+                                                  </div>
+                                                  <div>
+                                                    <Label className="m-2 text-xs">
+                                                      Location
+                                                    </Label>
+                                                    <Input
+                                                      value={
+                                                        sizeDraft?.location ??
+                                                        "WH-DEFAULT"
+                                                      }
+                                                      onChange={(e) =>
+                                                        setSizeDraft((d) =>
+                                                          d
+                                                            ? {
+                                                                ...d,
+                                                                location:
+                                                                  e.target
+                                                                    .value,
+                                                              }
+                                                            : d
+                                                        )
+                                                      }
+                                                    />
+                                                  </div>
+                                                </div>
+
+                                                <div className="flex justify-end gap-2">
+                                                  <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    onClick={saveSize}
+                                                  >
+                                                    <Check className="h-4 w-4 mr-2" />
+                                                    Save
+                                                  </Button>
+                                                  <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    onClick={cancelEditSize}
+                                                  >
+                                                    <XIcon className="h-4 w-4 mr-2" />
+                                                    Cancel
+                                                  </Button>
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <div className="flex justify-end gap-2">
+                                                <Button
+                                                  type="button"
+                                                  size="sm"
+                                                  variant="secondary"
+                                                  onClick={() =>
+                                                    startEditSize(s)
+                                                  }
+                                                >
+                                                  <Pencil className="h-4 w-4 mr-2" />
+                                                  Edit
+                                                </Button>
+                                                <Button
+                                                  type="button"
+                                                  size="sm"
+                                                  variant="destructive"
+                                                  onClick={() =>
+                                                    deleteSize(s._id)
+                                                  }
+                                                >
+                                                  <Trash2 className="h-4 w-4 mr-2" />
+                                                  Delete
+                                                </Button>
+                                              </div>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
                                   </tbody>
                                 </table>
                               </div>
                             ) : (
-                              <div className="p-3 text-sm text-gray-600">No sizes for this variant.</div>
+                              <div className="p-3 text-sm text-gray-600">
+                                No sizes for this variant.
+                              </div>
                             )}
                           </TableCell>
                         </TableRow>

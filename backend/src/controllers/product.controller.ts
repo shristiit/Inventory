@@ -47,12 +47,6 @@ export const addVariant = asyncHandler(async (req: Request, res: Response) => {
   res.status(201).json(variant);
 });
 
-export const listVariantsForProduct = asyncHandler(async (req, res) => {
-  const { id } = req.params; // productId
-  const variants = await variantSvc.listByProduct(id);
-  res.json(variants);
-});
-
 export const updateVariant = asyncHandler(async (req: Request, res: Response) => {
   const actorId = req.user?._id ?? null; // safe
   res.json(await variantSvc.update(req.params.variantId, req.body, actorId));
