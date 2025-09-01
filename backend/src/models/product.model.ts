@@ -7,6 +7,7 @@ export interface ProductDoc extends Document {
   title: string;
   description?: string;
   price: number;            // base/list price (use cents to avoid float drift)
+  vatprice: number;         // VAT-inclusive price 
   attributes?: Record<string, any>; // brand, category, etc.
   status: ProductStatus;    // active/inactive for sales gating
   isDeleted: boolean;
@@ -20,6 +21,7 @@ const ProductSchema = new Schema<ProductDoc>(
     title:       { type: String, required: true, index: true },
     description: { type: String },
     price:       { type: Number, required: true, min: 0 },
+    vatprice:    { type: Number, required: true, min: 0 },
     attributes:  { type: Schema.Types.Mixed },
     status:      { type: String, enum: ['active','inactive','draft','archived'], default: 'draft', index: true },
     isDeleted:   { type: Boolean, default: false, index: true },

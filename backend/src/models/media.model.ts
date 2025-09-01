@@ -1,7 +1,7 @@
 import { Schema, model, Types, Document } from 'mongoose';
 
 export interface IMedia extends Document<Types.ObjectId> {
-  productId: Types.ObjectId;
+  variantId: Types.ObjectId;
   url: string;
   type: 'image' | 'video';
   altText?: string;
@@ -11,9 +11,9 @@ export interface IMedia extends Document<Types.ObjectId> {
 
 const MediaSchema = new Schema<IMedia>(
   {
-    productId: {
+    variantId: {
       type: Schema.Types.ObjectId,
-      ref:  'Product',
+      ref:  'Variant',
       required: true,
     },
     url:  { type: String, required: true },
