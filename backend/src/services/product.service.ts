@@ -11,6 +11,7 @@ type DeepCreateInput = {
     title: string;
     description?: string;
     price: number;
+    vatprice: number;
     attributes?: any;
     status?: 'active' | 'inactive' | 'draft' | 'archived';
   };
