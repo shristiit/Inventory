@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import api from "@/lib/api";
+import { Input } from "@/components/ui/input";
 
 /** ---- List response types (unchanged) ---- */
 type ProductRow = {
@@ -48,7 +49,7 @@ type SizeRow = {
   totalQuantity?: number;
   reservedTotal?: number;
   sellableQuantity?: number;
-  onOrderTotal?: number; // <-- make sure API provides this
+  onOrderTotal?: number; // <-- product.getDeep should provide this
 };
 type VariantDeep = {
   _id: string;
@@ -97,6 +98,20 @@ function n0(n: unknown, fallback = 0) {
   return typeof n === "number" && !Number.isNaN(n) ? n : fallback;
 }
 
+/** Highlight matched text inside a cell (very small helper) */
+function highlight(text: string, q: string) {
+  if (!q) return text;
+  const i = text.toLowerCase().indexOf(q.toLowerCase());
+  if (i === -1) return text;
+  return (
+    <>
+      {text.slice(0, i)}
+      <mark>{text.slice(i, i + q.length)}</mark>
+      {text.slice(i + q.length)}
+    </>
+  );
+}
+
 export default function ProductsPage() {
   const router = useRouter();
 
@@ -104,6 +119,7 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0); // 0-based for UI
   const [total, setTotal] = useState(0);
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Deep product cache (variants + sizes) per product
   const [deepMap, setDeepMap] = useState<Record<string, ProductDeep>>({});
@@ -203,6 +219,7 @@ export default function ProductsPage() {
   /** ---- FLATTEN: product→variant→sizes into size-level line items ---- */
   const sizeLineItems = useMemo<SizeLineItem[]>(() => {
     const out: SizeLineItem[] = [];
+
     for (const p of visible) {
       const deep = deepMap[p._id];
       if (!deep?.variants?.length) continue;
@@ -230,6 +247,19 @@ export default function ProductsPage() {
     return out;
   }, [visible, deepMap]);
 
+  // ✅ Filter the list we actually render
+  const filteredLines = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return sizeLineItems;
+    return sizeLineItems.filter((item) =>
+      item.title.toLowerCase().includes(q) ||
+      item.styleNumber.toLowerCase().includes(q) ||
+      item.sku.toLowerCase().includes(q) ||
+      item.sizeLabel.toLowerCase().includes(q) ||
+      item.barcode.toLowerCase().includes(q)
+    );
+  }, [sizeLineItems, searchTerm]);
+
   if (loading)
     return <div className="p-6 text-lg font-medium">Loading products…</div>;
 
@@ -238,6 +268,12 @@ export default function ProductsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold mb-6">Products — Size Line Items</h1>
         <div className="flex justify-end mb-4 gap-2">
+          <Input
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search Product, Style, SKU, Size, Barcode"
+            className="w-72"
+          />
           <Button
             className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all"
             onClick={() => router.push("/products/new")}
@@ -248,6 +284,7 @@ export default function ProductsPage() {
           <Button onClick={() => router.push("/products/inactive")}>
             In-active Products
           </Button>
+
           <Button variant="outline" onClick={() => fetchPage(page)}>
             Refresh
           </Button>
@@ -271,43 +308,58 @@ export default function ProductsPage() {
           </TableHeader>
 
           <TableBody>
-            {/* If none of the visible products are deep-loaded yet, show a placeholder */}
-            {sizeLineItems.length === 0 ? (
+            {filteredLines.length === 0 ? (
               <>
-                {visible.map((p) => (
-                  <TableRow key={p._id}>
+                {searchTerm ? (
+                  <TableRow>
                     <TableCell colSpan={9} className="text-sm text-gray-500">
-                      {deepLoading[p._id]
-                        ? `Loading sizes for ${p.title} (${p.styleNumber})…`
-                        : `No sizes found for ${p.title} (${p.styleNumber}).`}
+                      No matches for “{searchTerm}”.
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  visible.map((p) => (
+                    <TableRow key={p._id}>
+                      <TableCell colSpan={9} className="text-sm text-gray-500">
+                        {deepLoading[p._id]
+                          ? `Loading sizes for ${p.title} (${p.styleNumber})…`
+                          : `No sizes found for ${p.title} (${p.styleNumber}).`}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </>
             ) : (
-              sizeLineItems.map((li) => (
+              filteredLines.map((li) => (
                 <TableRow key={`${li.productId}-${li.variantId}-${li.sizeId}`}>
                   <TableCell className="font-mono">
-                    {/* Barcode as a clickable ref to product page; tweak route if you have a size detail */}
                     <Link
-                      href={`/products/${li.productId}`}
+                      href={`/Products/${li.productId}`}
                       className="text-indigo-600 hover:underline"
                       title="Open product"
                     >
-                      {li.barcode}
+                      {highlight(li.barcode, searchTerm)}
                     </Link>
                   </TableCell>
                   <TableCell>
                     <Link
-                      href={`/products/${li.productId}`}
+                      href={`/Products/${li.productId}`}
                       className="text-indigo-600 hover:underline"
                     >
-                      {li.title}
+                      {highlight(li.title, searchTerm)}
                     </Link>
                   </TableCell>
-                  <TableCell className="font-mono">{li.styleNumber}</TableCell>
-                  <TableCell className="font-mono">{li.sku}</TableCell>
-                  <TableCell>{li.sizeLabel}</TableCell>
+                  <TableCell className="font-mono">
+                    {highlight(li.styleNumber, searchTerm)}
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      href={`/Variant/${encodeURIComponent(li.sku)}`}
+                      className="text-indigo-600 hover:underline"
+                    >
+                      {highlight(li.sku, searchTerm)}
+                    </Link>
+                  </TableCell>
+                  <TableCell>{highlight(li.sizeLabel, searchTerm)}</TableCell>
                   <TableCell>{formatMinorGBP(li.priceMinor)}</TableCell>
                   <TableCell>{li.totalStock}</TableCell>
                   <TableCell>{li.onOrder}</TableCell>
@@ -319,7 +371,6 @@ export default function ProductsPage() {
         </Table>
       </div>
 
-      {/* Pagination remains product-based */}
       {totalPages > 1 && (
         <div className="flex justify-center gap-4 mt-6">
           <Button
