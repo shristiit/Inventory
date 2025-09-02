@@ -606,7 +606,7 @@ export default function ProductDetailsPage() {
     <div className="p-4 space-y-8 max-w-5xl">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Edit Product</h1>
-        <Link href="/products" className="underline">
+        <Link href="/Products" className="underline">
           Back to Products
         </Link>
       </div>
