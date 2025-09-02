@@ -4,8 +4,9 @@ import * as variantSvc from '../services/variant.service';
 import * as sizeSvc from '../services/size.service';
 import asyncHandler from '../utils/asyncHandler';
 
+// Products
 export const createProductDeep = asyncHandler(async (req: Request, res: Response) => {
-  const adminId = req.user?._id ?? null; // safe
+  const adminId = req.user?._id ?? null;
   const created = await productSvc.createDeep(req.body, adminId);
   res.status(201).json(created);
 });
@@ -28,56 +29,70 @@ export const getProductDeep = asyncHandler(async (req: Request, res: Response) =
 });
 
 export const updateProduct = asyncHandler(async (req: Request, res: Response) => {
-  const actorId = req.user?._id ?? null; // safe
-  const updated = await productSvc.updatePartial(req.params.id, req.body, actorId);
-  res.json(updated);
+  const actorId = req.user?._id ?? null;
+  res.json(await productSvc.updatePartial(req.params.id, req.body, actorId));
 });
 
 export const setProductStatus = asyncHandler(async (req: Request, res: Response) => {
-  const actorId = req.user?._id ?? null; // safe
-  const { status } = req.body; // 'active' | 'inactive'
-  const updated = await productSvc.setStatus(req.params.id, status, actorId);
-  res.json(updated);
+  const actorId = req.user?._id ?? null;
+  const { status } = req.body;
+  res.json(await productSvc.setStatus(req.params.id, status, actorId));
 });
 
 // Variants
 export const addVariant = asyncHandler(async (req: Request, res: Response) => {
-  const actorId = req.user?._id ?? null; // safe
+  const actorId = req.user?._id ?? null;
   const variant = await variantSvc.add(req.params.id, req.body, actorId);
   res.status(201).json(variant);
 });
 
 export const updateVariant = asyncHandler(async (req: Request, res: Response) => {
-  const actorId = req.user?._id ?? null; // safe
+  const actorId = req.user?._id ?? null;
   res.json(await variantSvc.update(req.params.variantId, req.body, actorId));
 });
 
 export const deleteVariantCascadeArchive = asyncHandler(async (req: Request, res: Response) => {
-  const actorId = req.user?._id ?? null; // safe
+  const actorId = req.user?._id ?? null;
   await variantSvc.removeCascadeArchive(req.params.variantId, actorId);
   res.status(204).send();
 });
 
+// ✅ Added deep reads
+export const getVariantDeep = asyncHandler(async (req: Request, res: Response) => {
+  const { variantId } = req.params;
+  const doc = await variantSvc.findDeepById(variantId);
+  if (!doc) return res.status(404).json({ message: 'Variant not found' });
+  res.json(doc);
+});
+
+export const getVariantBySku = asyncHandler(async (req: Request, res: Response) => {
+  const { sku } = req.params;
+  if (!sku) return res.status(400).json({ message: 'Missing sku' });
+  const doc = await variantSvc.findDeepBySku(sku);
+  if (!doc) return res.status(404).json({ message: 'Variant not found' });
+  res.json(doc);
+});
+
 // Sizes
 export const addSize = asyncHandler(async (req: Request, res: Response) => {
-  const actorId = req.user?._id ?? null; // safe
+  const actorId = req.user?._id ?? null;
   res.status(201).json(await sizeSvc.add(req.params.variantId, req.body, actorId));
 });
 
 export const updateSize = asyncHandler(async (req: Request, res: Response) => {
-  const actorId = req.user?._id ?? null; // safe
+  const actorId = req.user?._id ?? null;
   res.json(await sizeSvc.update(req.params.sizeId, req.body, actorId));
 });
 
 export const deleteSizeArchive = asyncHandler(async (req: Request, res: Response) => {
-  const actorId = req.user?._id ?? null; // safe
+  const actorId = req.user?._id ?? null;
   await sizeSvc.removeArchive(req.params.sizeId, actorId);
   res.status(204).send();
 });
 
 // Product delete
 export const deleteProductCascadeArchive = asyncHandler(async (req: Request, res: Response) => {
-  const actorId = req.user?._id ?? null; // safe
+  const actorId = req.user?._id ?? null;
   await productSvc.removeCascadeArchive(req.params.id, actorId);
   res.status(204).send();
 });
