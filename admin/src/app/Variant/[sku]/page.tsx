@@ -16,8 +16,14 @@ type Size = {
   totalQuantity?: number;
   reservedTotal?: number;
   sellableQuantity?: number;
-  onOrder?: number;        // variant.service.ts returns onOrder (sum)
-  onOrderTotal?: number;   // product.getDeep uses onOrderTotal — handle both
+  onOrder?: number;
+  onOrderTotal?: number;
+};
+
+type MediaItem = {
+  url: string;
+  type?: "image" | "video";
+  isPrimary?: boolean;
 };
 
 type VariantDeep = {
@@ -26,15 +32,56 @@ type VariantDeep = {
   status?: "active" | "inactive" | "draft" | "archived";
   color?: { name?: string; code?: string };
   priceMinor?: number;
-  product?: { _id?: string; title?: string; styleNumber?: string };
+  product?: {
+    _id?: string;
+    title?: string;
+    styleNumber?: string;
+    images?: string[];
+    media?: (MediaItem | string)[];
+  };
   updatedAt?: string;
   sizes?: Size[];
-  images?: string[]; // alias of media
+  images?: string[];               // simple form
+  media?: (MediaItem | string)[];  // rich form OR strings
 };
 
 function formatMinorGBP(pence?: number) {
   if (typeof pence !== "number") return "—";
   return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(pence / 100);
+}
+
+function guessTypeFromUrl(url: string): "image" | "video" {
+  const u = url.toLowerCase();
+  if (u.endsWith(".mp4") || u.endsWith(".webm") || u.endsWith(".mov")) return "video";
+  return "image";
+}
+
+function filenameFromUrl(url: string) {
+  try {
+    const u = new URL(url);
+    const base = u.pathname.split("/").filter(Boolean).pop() || url;
+    return decodeURIComponent(base.split("?")[0].split("#")[0]);
+  } catch {
+    const base = url.split("/").pop() || url;
+    return decodeURIComponent(base.split("?")[0].split("#")[0]);
+  }
+}
+
+/** Make absolute if the API returned a relative path */
+function toAbsoluteAssetUrl(u?: string): string | undefined {
+  if (!u) return undefined;
+  try {
+    // already absolute?
+    new URL(u);
+    return u;
+  } catch {
+    const base =
+      process.env.NEXT_PUBLIC_ASSET_BASE_URL ||
+      (typeof window !== "undefined" ? window.location.origin : "");
+    if (!base) return u;
+    if (u.startsWith("/")) return `${base}${u}`;
+    return `${base}/${u}`;
+  }
 }
 
 export default function VariantPage() {
@@ -50,8 +97,12 @@ export default function VariantPage() {
       try {
         setLoading(true);
         setErr(null);
-        // ✅ hits your Express route: GET /products/variants/by-sku/:sku
-        const resp = await api.get<VariantDeep>(`/api/products/variants/by-sku/${encodeURIComponent(String(sku))}`);
+        const resp = await api.get<VariantDeep>(
+          `/api/products/variants/by-sku/${encodeURIComponent(String(sku))}`
+        );
+        // Debug: see what your backend actually sends
+        // Remove once confirmed.
+        console.log("VariantDeep payload:", resp.data);
         if (!cancelled) setData(resp.data);
       } catch (e: any) {
         const msg = e?.response?.data?.message || e?.message || "Unknown error";
@@ -72,6 +123,41 @@ export default function VariantPage() {
       });
     } catch { return data.updatedAt; }
   }, [data?.updatedAt]);
+
+  /**
+   * Normalize media from:
+   * - variant.media: (MediaItem|string)[]
+   * - variant.images: string[]
+   * - product.media: (MediaItem|string)[]
+   * - product.images: string[]
+   */
+  const mediaList = useMemo<MediaItem[]>(() => {
+    const raw: Array<MediaItem | string> = [];
+
+    if (Array.isArray(data?.media)) raw.push(...data!.media!);
+    if (Array.isArray(data?.images)) raw.push(...data!.images!);
+    if (Array.isArray(data?.product?.media)) raw.push(...(data!.product!.media!));
+    if (Array.isArray(data?.product?.images)) raw.push(...(data!.product!.images!));
+
+    const normalized: MediaItem[] = raw
+      .map((m) => {
+        if (typeof m === "string") {
+          const abs = toAbsoluteAssetUrl(m);
+          return abs ? { url: abs, type: guessTypeFromUrl(abs) } : null;
+        }
+        const abs = toAbsoluteAssetUrl(m.url);
+        if (!abs) return null;
+        return { url: abs, type: m.type || guessTypeFromUrl(abs), isPrimary: m.isPrimary };
+      })
+      .filter(Boolean) as MediaItem[];
+
+    // dedupe by URL and primary first
+    const uniq = new Map<string, MediaItem>();
+    normalized.forEach((m) => uniq.set(m.url, m));
+    return Array.from(uniq.values()).sort(
+      (a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0)
+    );
+  }, [data]);
 
   return (
     <div className="p-6 space-y-6">
@@ -128,16 +214,67 @@ export default function VariantPage() {
                 <TableRow>
                   <TableCell className="font-medium">Colour</TableCell>
                   <TableCell className="flex items-center gap-3">
-                    
+                    {data.color?.code && (
+                      <span
+                        className="inline-block h-4 w-4 rounded border"
+                        style={{ backgroundColor: data.color.code }}
+                        title={data.color.code}
+                      />
+                    )}
                     <span>
                       {data.color?.name || "—"}
-                      {data.color?.code && <span className="ml-2 text-muted-foreground"></span>}
+                      {data.color?.code && <span className="ml-2 text-muted-foreground">({data.color.code})</span>}
                     </span>
                   </TableCell>
                 </TableRow>
                 <TableRow><TableCell className="font-medium">Price</TableCell><TableCell>{priceGBP}</TableCell></TableRow>
                 <TableRow><TableCell className="font-medium">Updated</TableCell><TableCell>{updated}</TableCell></TableRow>
-                <TableRow><TableCell className="font-medium">Variant ID</TableCell><TableCell className="text-xs text-muted-foreground">{data._id}</TableCell></TableRow>
+
+                {/* Media thumbnails in overview with filename captions */}
+                <TableRow>
+                  <TableCell className="font-medium">Media</TableCell>
+                  <TableCell>
+                    {mediaList.length === 0 ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-3">
+                        {mediaList.slice(0, 4).map((m, i) => {
+                          const name = filenameFromUrl(m.url);
+                          return (
+                            <figure key={m.url + i} className="w-20">
+                              {m.type === "video" ? (
+                                <video
+                                  src={m.url}
+                                  className="h-16 w-16 rounded border object-cover"
+                                  muted
+                                  playsInline
+                                />
+                              ) : (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={m.url}
+                                  alt={name}
+                                  className="h-16 w-16 rounded border object-cover"
+                                />
+                              )}
+                              <span className="block mt-1 text-[10px] text-muted-foreground truncate" title={name}>
+                                {name}
+                              </span>
+                            </figure>
+                          );
+                        })}
+                        {mediaList.length > 4 && (
+                          <span className="text-xs text-muted-foreground self-center">+{mediaList.length - 4} more</span>
+                        )}
+                      </div>
+                    )}
+                  </TableCell>
+                </TableRow>
+
+                <TableRow>
+                  <TableCell className="font-medium">Variant ID</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{data._id}</TableCell>
+                </TableRow>
               </TableBody>
             </Table>
           </div>
@@ -181,15 +318,36 @@ export default function VariantPage() {
             )}
           </div>
 
-          {/* Images */}
-          {Array.isArray(data.images) && data.images.length > 0 && (
+          {/* Full media gallery with filename captions */}
+          {mediaList.length > 0 && (
             <div className="space-y-2">
-              <h2 className="text-lg font-semibold">Images</h2>
+              <h2 className="text-lg font-semibold">Media</h2>
               <div className="flex flex-wrap gap-3">
-                {data.images.map((src, i) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img key={i} src={src} alt={`Variant image ${i + 1}`} className="h-24 w-24 rounded-md object-cover border" />
-                ))}
+                {mediaList.map((m, i) => {
+                  const name = filenameFromUrl(m.url);
+                  return (
+                    <figure key={m.url + i} className="w-28">
+                      {m.type === "video" ? (
+                        <video
+                          src={m.url}
+                          className="h-24 w-24 rounded-md object-cover border"
+                          controls
+                          playsInline
+                        />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={m.url}
+                          alt={name}
+                          className="h-24 w-24 rounded-md object-cover border"
+                        />
+                      )}
+                      <span className="block mt-1 text-[10px] text-muted-foreground truncate" title={name}>
+                        {name}
+                      </span>
+                    </figure>
+                  );
+                })}
               </div>
             </div>
           )}
