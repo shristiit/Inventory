@@ -151,7 +151,9 @@ export default function ProductsPage() {
     [total]
   );
 
+  
   const visible = rows;
+  console.log(visible)
 
   /** Fetch deep product (variants + sizes) for visible products (lazy) */
   const fetchDeepForVisible = useCallback(async () => {
@@ -266,7 +268,7 @@ export default function ProductsPage() {
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 bg-white shadow-lg rounded-xl border border-gray-200">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold mb-6">Products — Size Line Items</h1>
+        <h1 className="text-2xl font-bold mb-6">Products — Size </h1>
         <div className="flex justify-end mb-4 gap-2">
           <Input
             value={searchTerm}
@@ -276,12 +278,12 @@ export default function ProductsPage() {
           />
           <Button
             className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all"
-            onClick={() => router.push("/products/new")}
+            onClick={() => router.push("/Products/new")}
           >
             <Plus className="mr-2 h-4 w-4" />
             Create product
           </Button>
-          <Button onClick={() => router.push("/products/inactive")}>
+          <Button onClick={() => router.push("/Products/inactive")}>
             In-active Products
           </Button>
 
@@ -364,6 +366,7 @@ export default function ProductsPage() {
                   <TableCell>{li.totalStock}</TableCell>
                   <TableCell>{li.onOrder}</TableCell>
                   <TableCell>{li.freeToSell}</TableCell>
+                  <TableCell></TableCell>
                 </TableRow>
               ))
             )}

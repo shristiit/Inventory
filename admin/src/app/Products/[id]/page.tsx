@@ -61,7 +61,7 @@ const PRODUCT_STATUSES: ProductDeep["status"][] = [
   "draft",
   "archived",
 ];
-const VARIANT_STATUSES: NonNullable<Variant["status"]>[] = [
+const VARIANT_STATUSES: Nonnullable<Variant["status"]>[] = [
   "active",
   "inactive",
 ];
@@ -106,6 +106,23 @@ function parseSizesInput(
     out.push({ label, quantity: qty });
   }
   return out;
+}
+
+function sum(ns: number[]) {
+  return ns.reduce((a, b) => a + b, 0);
+}
+function variantTotals(v?: Variant) {
+  const sizes = v?.sizes || [];
+  const total = sum(sizes.map((s) => s.totalQuantity || 0));
+  const reserved = sum(sizes.map((s) => s.reservedTotal || 0));
+  const sellable = sum(
+    sizes.map(
+      (s) =>
+        s.sellableQuantity ??
+        Math.max(0, (s.totalQuantity || 0) - (s.reservedTotal || 0))
+    )
+  );
+  return { total, reserved, sellable };
 }
 
 /* ---------- Size editor draft ---------- */
@@ -327,8 +344,7 @@ export default function ProductDetailsPage() {
   }
 
   async function deleteVariant(vId: string) {
-    if (!confirm("Delete this variant? Its sizes will be archived too."))
-      return;
+    if (!confirm("Delete this color and all its sizes?")) return;
     try {
       await api.delete(`/api/products/variants/${vId}`);
       setVariants((prev) => prev.filter((v) => v._id !== vId));
@@ -393,7 +409,6 @@ export default function ProductDetailsPage() {
                 {
                   location,
                   onHand: Math.max(0, Number(quantity || 0)),
-                  onOrder: 0,
                   reserved: 0,
                 },
               ],
@@ -426,8 +441,8 @@ export default function ProductDetailsPage() {
       _id: s._id,
       label: s.label,
       barcode: s.barcode,
-      onHand: "", // optional quick adjust
-      reserved: "",
+      onHand: s.totalQuantity ?? "",
+      reserved: s.reservedTotal ?? "",
       location: opts?.location || "WH-DEFAULT",
     });
   }
@@ -453,7 +468,6 @@ export default function ProductDetailsPage() {
               sizeDraft.onHand === "" || sizeDraft.onHand == null
                 ? undefined
                 : Math.max(0, Number(sizeDraft.onHand)),
-            onOrder: 0,
             reserved:
               sizeDraft.reserved === "" || sizeDraft.reserved == null
                 ? undefined
@@ -508,7 +522,6 @@ export default function ProductDetailsPage() {
               {
                 location: (location || "WH-DEFAULT").trim(),
                 onHand: Math.max(0, Number(quantity || 0)),
-                onOrder: 0,
                 reserved: 0,
               },
             ],
@@ -530,30 +543,6 @@ export default function ProductDetailsPage() {
       return next;
     });
   }
-  async function deleteSize(sizeId: string, variantId: string) {
-    if (!confirm("Delete this size?")) return;
-    try {
-      // Call the API
-      await api.delete(`/api/products/sizes/${sizeId}`);
-
-      // Optimistically update local state so the row disappears immediately
-      setVariants((prev) =>
-        prev.map((v) =>
-          v._id === variantId
-            ? { ...v, sizes: (v.sizes || []).filter((s) => s._id !== sizeId) }
-            : v
-        )
-      );
-
-      // If you still want a full refresh, keep this line.
-      // If your API returns archived sizes, REMOVE this line.
-      // await refreshProduct();
-    } catch (e: any) {
-      console.error("Delete size failed:", e?.response || e);
-      alert(e?.response?.data?.message || "Failed to delete size.");
-    }
-  }
-
   function renderSizeChips(sizes?: Size[], onChipClick?: (s: Size) => void) {
     if (!sizes || sizes.length === 0) return <span>—</span>;
     const max = 8;
@@ -632,7 +621,7 @@ export default function ProductDetailsPage() {
           </div>
 
           <div>
-            <Label className="m-2">Price (GBP)</Label>
+            <Label className="m-2">Price ($)</Label>
             <Input
               type="number"
               step="0.01"
@@ -875,6 +864,7 @@ export default function ProductDetailsPage() {
                 <TableHead className="font-semibold">SKU</TableHead>
                 <TableHead className="font-semibold">Color</TableHead>
                 <TableHead className="font-semibold">Status</TableHead>
+                <TableHead className="font-semibold">Qty</TableHead>
                 <TableHead className="font-semibold">Sizes</TableHead>
                 <TableHead className="font-semibold text-right">
                   Actions
@@ -885,7 +875,7 @@ export default function ProductDetailsPage() {
               {variants.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={7}
                     className="text-center py-6 text-gray-500"
                   >
                     No Colors yet.
@@ -895,8 +885,6 @@ export default function ProductDetailsPage() {
                 variants.map((v) => {
                   const isEditing = editingVariantId === v._id;
                   const draft = isEditing ? draftVariant : null;
-
-                  // local controls to add sizes to this variant
 
                   return (
                     <React.Fragment key={v._id}>
@@ -986,6 +974,11 @@ export default function ProductDetailsPage() {
                           )}
                         </TableCell>
 
+                        {/* Variant total quantity */}
+                        <TableCell className="align-middle">
+                          {variantTotals(v).total}
+                        </TableCell>
+
                         {/* Size chips (click to edit) */}
                         <TableCell className="align-middle">
                           {renderSizeChips(v.sizes, (s) =>
@@ -1044,20 +1037,135 @@ export default function ProductDetailsPage() {
                                 type="button"
                                 size="sm"
                                 variant="destructive"
-                                onClick={() => deleteSize(s._id, v._id)}
+                                onClick={() => deleteVariant(v._id)}
                               >
                                 <Trash2 className="h-4 w-4 mr-2" />
-                                Delete
+                                Delete color
                               </Button>
                             </div>
                           )}
                         </TableCell>
                       </TableRow>
 
-                      {/* Expanded: sizes table + inline editor + add sizes */}
+                      {/* Expanded: quick color-level qty editor + sizes table */}
                       {expanded.has(v._id) && (
                         <TableRow>
-                          <TableCell colSpan={6} className="bg-gray-50">
+                          <TableCell colSpan={7} className="bg-gray-50">
+                            {/* Quick quantity editor (color level, pick a size) */}
+                            <div className="border rounded p-3 mb-3">
+                              <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+                                <div className="md:col-span-2">
+                                  <Label className="m-2">Size to edit</Label>
+                                  <select
+                                    className="w-full h-10 border rounded px-3"
+                                    value={
+                                      sizeDraft?._id &&
+                                      v.sizes?.some(
+                                        (s) => s._id === sizeDraft._id
+                                      )
+                                        ? sizeDraft._id
+                                        : v.sizes?.[0]?._id || ""
+                                    }
+                                    onChange={(e) => {
+                                      const s = v.sizes?.find(
+                                        (x) => x._id === e.target.value
+                                      );
+                                      if (s) {
+                                        setEditingSizeId(s._id);
+                                        setSizeDraft({
+                                          _id: s._id,
+                                          label: s.label,
+                                          barcode: s.barcode,
+                                          onHand: s.totalQuantity ?? "",
+                                          reserved: s.reservedTotal ?? "",
+                                          location: "WH-DEFAULT",
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    {(v.sizes || []).map((s) => (
+                                      <option key={s._id} value={s._id}>
+                                        {s.label} (qty {s.totalQuantity ?? 0})
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <Label className="m-2">On hand</Label>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    value={sizeDraft?.onHand ?? ""}
+                                    onChange={(e) =>
+                                      setSizeDraft((d) =>
+                                        d
+                                          ? {
+                                              ...d,
+                                              onHand:
+                                                e.target.value === ""
+                                                  ? ""
+                                                  : Math.max(
+                                                      0,
+                                                      Number(e.target.value)
+                                                    ),
+                                            }
+                                          : d
+                                      )
+                                    }
+                                    placeholder="leave blank"
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="m-2">Reserved</Label>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    value={sizeDraft?.reserved ?? ""}
+                                    onChange={(e) =>
+                                      setSizeDraft((d) =>
+                                        d
+                                          ? {
+                                              ...d,
+                                              reserved:
+                                                e.target.value === ""
+                                                  ? ""
+                                                  : Math.max(
+                                                      0,
+                                                      Number(e.target.value)
+                                                    ),
+                                            }
+                                          : d
+                                      )
+                                    }
+                                    placeholder="leave blank"
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="m-2">Location</Label>
+                                  <Input
+                                    value={sizeDraft?.location ?? "WH-DEFAULT"}
+                                    onChange={(e) =>
+                                      setSizeDraft((d) =>
+                                        d
+                                          ? { ...d, location: e.target.value }
+                                          : d
+                                      )
+                                    }
+                                  />
+                                </div>
+                                <div className="flex justify-end">
+                                  <Button
+                                    type="button"
+                                    onClick={saveSize}
+                                    disabled={!editingSizeId || !sizeDraft}
+                                  >
+                                    <Check className="h-4 w-4 mr-2" />
+                                    Save quantity
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+
                             {/* Add more sizes to this variant */}
                             <div className="border rounded p-3 mb-3">
                               <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">

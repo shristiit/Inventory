@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/app/Components/textarea";
 import { Trash2, Pencil, Check, X as XIcon } from "lucide-react";
+import { ProductCategory } from "@/app/Assets/ProductData";
 
 /* ---------------- helpers ---------------- */
 function skuSuffixFromColor(name: string) {
@@ -23,7 +24,10 @@ function rand(n = 6) {
   return Math.random().toString(36).slice(-n).toUpperCase();
 }
 function tokenize(s: string) {
-  return (s || "").replace(/\s+/g, "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  return (s || "")
+    .replace(/\s+/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase();
 }
 function normColor(s: string) {
   return (s || "").trim().toLowerCase();
@@ -96,8 +100,9 @@ export default function NewProductPage() {
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [priceGBP, setPriceGBP] = useState<string | number>("");
-  const [status, setStatus] =
-    useState<"active" | "inactive" | "draft" | "archived">("active");
+  const [status, setStatus] = useState<
+    "active" | "inactive" | "draft" | "archived"
+  >("active");
   const [category, setCategory] = useState("");
   const [supplier, setSupplier] = useState("");
   const [season, setSeason] = useState("");
@@ -107,7 +112,10 @@ export default function NewProductPage() {
   const [colorName, setColorName] = useState("");
   const [colorCode, setColorCode] = useState("");
   const [sizeLabel, setSizeLabel] = useState("");
+  const [location,setLocation] = useState("")
   const [quantity, setQuantity] = useState<number>(0);
+ const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
 
   // table rows
   const [lines, setLines] = useState<Line[]>([]);
@@ -120,8 +128,14 @@ export default function NewProductPage() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-
   // preview SKU for current color (per-color)
+  const handleFileMedia = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setMediaFile(file);
+    if (mediaPreview) URL.revokeObjectURL(mediaPreview);
+    setMediaPreview(file ? URL.createObjectURL(file) : null);
+  };
+
   const skuPreview = useMemo(() => {
     const sty = tokenize(styleNumber);
     const suf = skuSuffixFromColor(colorName);
@@ -129,6 +143,11 @@ export default function NewProductPage() {
   }, [styleNumber, colorName]);
 
   /* ---------------- DRAFT: load on mount ---------------- */
+  useEffect(() => {
+    return () => {
+      if (mediaPreview) URL.revokeObjectURL(mediaPreview);
+    };
+  }, [mediaPreview]);
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
@@ -167,7 +186,7 @@ export default function NewProductPage() {
 
   /* ---------------- DRAFT: autosave (debounced) ---------------- */
   const autosaveTimer = useRef<number | null>(null);
-  function scheduleAutosave() {
+  const scheduleAutosave = React.useCallback(() => {
     if (autosaveTimer.current) window.clearTimeout(autosaveTimer.current);
     autosaveTimer.current = window.setTimeout(() => {
       const snapshot: DraftShape = {
@@ -192,11 +211,6 @@ export default function NewProductPage() {
         // ignore write failures
       }
     }, 300);
-  }
-
-  // watch all form states
-  useEffect(() => {
-    scheduleAutosave();
   }, [
     styleNumber,
     title,
@@ -213,6 +227,11 @@ export default function NewProductPage() {
     quantity,
     lines,
   ]);
+
+  // watch all form states
+  useEffect(() => {
+    scheduleAutosave();
+  }, [scheduleAutosave]);
 
   /* ---------------- Manual draft actions ---------------- */
   function clearDraft() {
@@ -372,12 +391,11 @@ export default function NewProductPage() {
       >();
       for (const ln of lines) {
         const key = normColor(ln.colorName);
-        const entry =
-          byColor.get(key) || {
-            colorName: ln.colorName,
-            colorCode: ln.colorCode,
-            sizes: [],
-          };
+        const entry = byColor.get(key) || {
+          colorName: ln.colorName,
+          colorCode: ln.colorCode,
+          sizes: [],
+        };
         entry.sizes.push({ label: ln.sizeLabel, quantity: ln.quantity });
         if (ln.colorCode) entry.colorCode = ln.colorCode;
         byColor.set(key, entry);
@@ -441,7 +459,7 @@ export default function NewProductPage() {
       localStorage.removeItem(DRAFT_KEY);
 
       setInfo("Product created successfully.");
-      router.push(`/products/${productId}`);
+      router.push(`/Products/${productId}`);
     } catch (e: any) {
       setErr(
         e?.response?.data?.message || e?.message || "Failed to create product."
@@ -450,12 +468,13 @@ export default function NewProductPage() {
       setSaving(false);
     }
   }
+  console.log("media",mediaFile)
 
   return (
     <div className="p-4 space-y-6 max-w-5xl">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Create Product</h1>
-        <Link href="/products" className="underline">
+        <Link href="/Products" className="underline">
           Back to Products
         </Link>
       </div>
@@ -488,7 +507,7 @@ export default function NewProductPage() {
             />
           </div>
           <div>
-            <Label className="m-2">Price (GBP)</Label>
+            <Label className="m-2">Price ($)</Label>
             <Input
               type="number"
               step="0.01"
@@ -534,13 +553,10 @@ export default function NewProductPage() {
           </div>
           <div>
             <Label className="m-2">Season</Label>
-            <Input
-              value={season}
-              onChange={(e) => setSeason(e.target.value)}
-            />
+            <Input value={season} onChange={(e) => setSeason(e.target.value)} />
           </div>
           <div>
-            <Label className="m-2">Wholesale (£)</Label>
+            <Label className="m-2">Cost Price ($)</Label>
             <Input
               type="number"
               step="0.01"
@@ -579,16 +595,65 @@ export default function NewProductPage() {
                 placeholder="OS / S,M,L or S:10,M:5,UK 8:0"
               />
             </div>
-            
+            <div>
+              <Label className="m-2">Location</Label>
+              <Input
+                value={location}
+                defaultValue="WH"
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="Location"
+              />
+            </div>
+            <div>
+              <Label>Media</Label>
+              <Input
+                type="file"
+                accept="image/*,video/*"
+                onChange={handleFileMedia}
+              />
+            </div>
+             {/* Preview + filename below */}
+              {mediaFile && (
+                <figure className="mt-2 w-32 text-center">
+                  {mediaFile.type.startsWith("video/") ? (
+                    <video
+                      src={mediaPreview ?? undefined}
+                      className="h-24 w-24 object-cover rounded border"
+                      controls
+                      playsInline
+                    />
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={mediaPreview ?? undefined}
+                      alt={mediaFile.name}
+                      className="h-24 w-24 object-cover rounded border"
+                    />
+                  )}
+                  <span
+                    className="block mt-1 text-[10px] text-muted-foreground truncate"
+                    title={mediaFile.name}
+                  >
+                    {mediaFile.name}
+                  </span>
+                </figure>
+              )}
+            <div>
+              <Label>Quantity</Label>
+              <Input placeholder="Enter Quantity"
+              value={quantity}
+              onChange={(e) => setQuantity(Number(e.target.value))} />
+            </div>
+
             <div className="flex items-end">
-              <Button className="" type="button" onClick={addLine}>
+              <Button className="ml-2" type="button" onClick={addLine}>
                 Add
               </Button>
             </div>
           </div>
 
           <p className="text-xs text-muted-foreground">
-            SKU will be generated per color: <code>{skuPreview}</code>. 
+            SKU will be generated per color: <code>{skuPreview}</code>.
           </p>
           <p className="text-xs text-muted-foreground">
             Tip: add multiple sizes separated by commas. Use{" "}
@@ -604,16 +669,14 @@ export default function NewProductPage() {
                   <th className="text-left p-2">#</th>
                   <th className="text-left p-2">Color</th>
                   <th className="text-left p-2">Size</th>
+                  <th className="text-left p-2">Quantity</th>
                   <th className="text-right p-2">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {lines.length === 0 ? (
                   <tr>
-                    <td
-                      className="p-3 text-center text-gray-500"
-                      colSpan={6}
-                    >
+                    <td className="p-3 text-center text-gray-500" colSpan={6}>
                       No variant rows yet. Add one above.
                     </td>
                   </tr>
@@ -657,13 +720,29 @@ export default function NewProductPage() {
                         </td>
 
                         {/* Qty */}
-                       
-
+                          <td>
+                            {isEdit ? (
+                            <Input
+                              value={draft?.quantity || ""}
+                              onChange={(e) =>
+                                setDraft((d) =>
+                                  d ? { ...d, quantity: Number(e.target.value) } : d
+                                )
+                              }
+                            />
+                          ) : (
+                            ln.quantity
+                          )}
+                          </td>
                         {/* Actions */}
                         <td className="p-2 flex justify-end align-middle text-right">
                           {isEdit ? (
                             <div className="flex justify-end gap-2">
-                              <Button type="button" size="sm" onClick={applyEdit}>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={applyEdit}
+                              >
                                 <Check className="h-4 w-4 mr-2" /> Save
                               </Button>
                               <Button
@@ -703,7 +782,7 @@ export default function NewProductPage() {
               </tbody>
             </table>
           </div>
-        </section>
+        </section> 
 
         {err && <p className="text-red-600">{err}</p>}
         {/* {info && <p className="text-emerald-700">{info}</p>} */}
@@ -715,7 +794,7 @@ export default function NewProductPage() {
           <Button
             type="button"
             variant="secondary"
-            onClick={() => router.push("/products")}
+            onClick={() => router.push("/Products")}
           >
             Cancel
           </Button>
