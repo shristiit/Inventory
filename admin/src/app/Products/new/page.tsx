@@ -455,6 +455,28 @@ export default function NewProductPage() {
       const productId = created?._id;
       if (!productId) throw new Error("Create API did not return product _id");
 
+      // If a media file was selected, attach it to the first variant
+      try {
+        if (mediaFile) {
+          let variantId: string | undefined = created?.variants?.[0]?._id;
+          if (!variantId) {
+            // fetch deep to locate a variant id
+            const { data: deep } = await api.get(`/api/products/${productId}`);
+            variantId = deep?.variants?.[0]?._id;
+          }
+          if (variantId) {
+            const fd = new FormData();
+            fd.append('files', mediaFile);
+            await api.post(`/api/products/variants/${variantId}/media`, fd, {
+              headers: { 'Content-Type': 'multipart/form-data' },
+            });
+          }
+        }
+      } catch (e) {
+        // non-fatal: media attach failed, but product is created
+        console.warn('Media upload failed:', e);
+      }
+
       // clear draft after successful save
       localStorage.removeItem(DRAFT_KEY);
 

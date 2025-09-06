@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import type { RequestHandler } from 'express';
 import * as productSvc from '../services/product.service';
 import * as variantSvc from '../services/variant.service';
 import * as sizeSvc from '../services/size.service';
@@ -95,4 +96,22 @@ export const deleteProductCascadeArchive = asyncHandler(async (req: Request, res
   const actorId = req.user?._id ?? null;
   await productSvc.removeCascadeArchive(req.params.id, actorId);
   res.status(204).send();
+});
+
+// Media upload for variant
+export const addVariantMedia: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+  const actorId = req.user?._id ?? null;
+  const { variantId } = req.params as { variantId: string };
+  const files = (req.files as Express.Multer.File[]) || [];
+  if (!files.length) {
+    return res.status(400).json({ message: 'No files uploaded' });
+  }
+
+  const items = files.map((f) => ({
+    url: `/static/uploads/${f.filename}`,
+    type: f.mimetype?.startsWith('video/') ? 'video' as const : 'image' as const,
+  }));
+
+  const updated = await variantSvc.addMedia(variantId, items, actorId);
+  return res.status(201).json({ media: items, variant: updated });
 });

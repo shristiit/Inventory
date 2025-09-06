@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as ctrl from '../controllers/product.controller';
+import { upload } from '../config/storage';
 
 const r = Router();
 
@@ -28,5 +29,9 @@ r.get('/:id', ctrl.getProductDeep);
 r.patch('/:id', ctrl.updateProduct);
 r.post('/:id/status', ctrl.setProductStatus);
 r.delete('/:id', ctrl.deleteProductCascadeArchive);
+
+// Media upload for a variant
+// Accepts multipart/form-data with one or more files under field name 'files'
+r.post('/variants/:variantId/media', upload.array('files', 10), ctrl.addVariantMedia);
 
 export default r;

@@ -1,5 +1,5 @@
 import mongoose, { Types } from 'mongoose';
-import Variant from '../models/variant.model';
+import Variant, { type MediaItem } from '../models/variant.model';
 import Size from '../models/size.model';
 import Product from '../models/product.model';
 import Archive from '../models/archive.model';
@@ -159,4 +159,17 @@ export async function findDeepBySku(sku: string): Promise<VariantDeepDTO | null>
   ]);
 
   return doc || null;
+}
+
+/* ---------- Media ---------- */
+export async function addMedia(
+  variantId: string,
+  items: MediaItem[],
+  adminId: any
+) {
+  return Variant.findByIdAndUpdate(
+    variantId,
+    { $push: { media: { $each: items } }, $set: { updatedBy: adminId } },
+    { new: true }
+  ).lean();
 }
