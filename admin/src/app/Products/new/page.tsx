@@ -23,7 +23,9 @@ export default function NewProductPage() {
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [priceGBP, setPriceGBP] = useState<string>("");
-  const [status, setStatus] = useState<"active" | "inactive" | "draft" | "archived">("active");
+  const [size, setSize] = useState<string>(""); // ✅ single size (required)
+  const [status, setStatus] =
+    useState<"active" | "inactive" | "draft" | "archived">("active");
   const [category, setCategory] = useState("");
   const [supplier, setSupplier] = useState("");
   const [season, setSeason] = useState("");
@@ -37,11 +39,14 @@ export default function NewProductPage() {
     const style = styleNumber.trim();
     const name = title.trim();
     const priceMinor = toMinor(priceGBP);
+    const sizeValue = size.trim(); // send as typed; controller trims too
 
     if (!style) return alert("Style number is required.");
     if (!name) return alert("Title is required.");
-    if(!desc) return alert ("Product must contain description")
-    if (priceMinor == null) return alert("Price is required and must be a valid number.");
+    if (!desc.trim()) return alert("Product must contain description.");
+    if (priceMinor == null)
+      return alert("Price is required and must be a valid number.");
+    if (!sizeValue) return alert("Size is required.");
 
     setSaving(true);
     try {
@@ -50,6 +55,7 @@ export default function NewProductPage() {
         title: name,
         description: desc.trim() || undefined,
         price: priceMinor, // minor units expected by backend
+        size: sizeValue,   // ✅ required by your model/controller
         attributes: {
           category: category || undefined,
           supplier: supplier || undefined,
@@ -59,21 +65,23 @@ export default function NewProductPage() {
             return Number.isFinite(n) ? n : undefined;
           })(),
         },
-        status,
+        status, // controller defaults to "active" if missing, but we pass it
       };
+
+      console.log("➡️ POST /api/products payload:", product);
 
       const { data } = await api.post("/api/products", { product });
 
-      // try common id shapes
-      const id =
-        data?._id ||
-        data?.id ||
-        data?.product?._id ||
-        data?.product?.id;
+      // optional: use returned id if you want to route to detail
+      // const id = data?._id || data?.id || data?.product?._id || data?.product?.id;
 
       router.push("/Products");
     } catch (err: any) {
-      alert(err?.response?.data?.message || err?.message || "Failed to create product.");
+      alert(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to create product."
+      );
     } finally {
       setSaving(false);
     }
@@ -123,6 +131,17 @@ export default function NewProductPage() {
             />
           </div>
 
+          {/* ✅ Single Size field (required by your schema) */}
+          <div>
+            <Label className="m-2">Size</Label>
+            <Input
+              value={size}
+              onChange={(e) => setSize(e.target.value)}
+              required
+              placeholder="e.g., S, M, L, 8, 9"
+            />
+          </div>
+
           <div>
             <Label className="m-2">Status</Label>
             <select
@@ -149,17 +168,29 @@ export default function NewProductPage() {
 
           <div>
             <Label className="m-2">Category</Label>
-            <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Shoes" />
+            <Input
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="Shoes"
+            />
           </div>
 
           <div>
             <Label className="m-2">Supplier</Label>
-            <Input value={supplier} onChange={(e) => setSupplier(e.target.value)} />
+            <Input
+              value={supplier}
+              onChange={(e) => setSupplier(e.target.value)}
+              placeholder="Supplier name"
+            />
           </div>
 
           <div>
             <Label className="m-2">Season</Label>
-            <Input value={season} onChange={(e) => setSeason(e.target.value)} />
+            <Input
+              value={season}
+              onChange={(e) => setSeason(e.target.value)}
+              placeholder="SS25"
+            />
           </div>
 
           <div>
@@ -169,6 +200,7 @@ export default function NewProductPage() {
               step="0.01"
               value={wholesale}
               onChange={(e) => setWholesale(e.target.value)}
+              placeholder="e.g., 45.00"
             />
           </div>
         </section>
@@ -177,7 +209,11 @@ export default function NewProductPage() {
           <Button className="bg-green-600" type="submit" disabled={saving}>
             {saving ? "Saving…" : "Create product"}
           </Button>
-          <Button type="button" variant="secondary" onClick={() => router.push("/Products")}>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => router.push("/Products")}
+          >
             Cancel
           </Button>
         </div>

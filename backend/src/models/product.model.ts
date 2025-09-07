@@ -9,6 +9,7 @@ export interface ProductDoc extends Document {
   // vatprice: number;         // VAT-inclusive price 
   attributes?: Record<string, any>; // brand, category, etc.
   status: ProductStatus;    // active/inactive for sales gating
+  size: string;
   isDeleted: boolean;
   createdBy?: Types.ObjectId;
   updatedBy?: Types.ObjectId;
@@ -24,6 +25,7 @@ const ProductSchema = new Schema<ProductDoc>(
     // vatprice:    { type: Number, required: true, min: 0 },
     attributes:  { type: Schema.Types.Mixed },
     status:      { type: String, enum: ['active','inactive','draft','archived'], default: 'draft', index: true },
+    size: {type:String, required:true},
     isDeleted:   { type: Boolean, default: false, index: true },
     createdBy:   { type: Schema.Types.ObjectId, ref: 'User' },
     updatedBy:   { type: Schema.Types.ObjectId, ref: 'User' },

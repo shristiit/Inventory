@@ -5,12 +5,12 @@ import Product from "../models/product.model";
 type ProductStatus = "active" | "inactive" | "draft" | "archived";
 
 const pickUpdatable = (src: any) => {
-  // only allow these fields via PATCH
   const out: any = {};
   if (src.styleNumber != null) out.styleNumber = String(src.styleNumber);
   if (src.title != null) out.title = String(src.title);
   if (src.description != null) out.description = String(src.description);
   if (src.price != null) out.price = Number(src.price);
+  if (src.size != null) out.size = String(src.size);            // ✅ allow size in PATCH
   if (src.attributes != null) out.attributes = src.attributes;
   if (src.status != null) out.status = src.status as ProductStatus;
   return out;
@@ -20,20 +20,36 @@ const pickUpdatable = (src: any) => {
 export async function createProduct(req: Request, res: Response, next: NextFunction) {
   try {
     const body = (req.body?.product ?? req.body) || {};
-    const { styleNumber, title, description, price, attributes, status } = body;
+    const {
+      styleNumber,
+      title,
+      description,
+      price,
+      attributes,
+      status,
+      size,                 // ✅ expect size in body
+    } = body;
 
     if (!styleNumber || !title) {
       return res.status(400).json({ message: "styleNumber and title are required." });
     }
-    if (price === undefined || price === null || !Number.isFinite(Number(price))) {
+    if (price == null || !Number.isFinite(Number(price))) {
       return res.status(400).json({ message: "price is required and must be a number." });
     }
+    // ✅ validate size (required by your schema)
+    if (size == null || String(size).trim() === "") {
+      return res.status(400).json({ message: "size is required." });
+    }
+    if(status == null ||String(status).trim()===""){
+      return res.status(400).json({ message: "status is required" });
 
+    }
     const created = await Product.create({
       styleNumber: String(styleNumber).trim(),
       title: String(title).trim(),
       description: description ? String(description) : undefined,
-      price: Number(price), // minor units (e.g., 12345)
+      price: Number(price), // minor units
+      size: String(size).trim(),                                  // ✅ save size
       attributes: attributes ?? undefined,
       status: (status as ProductStatus) ?? "active",
       createdBy: (req as any).user?._id,
@@ -99,6 +115,9 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
     if (patch.price != null && !Number.isFinite(Number(patch.price))) {
       return res.status(400).json({ message: "price must be a number." });
     }
+    if (patch.size != null && String(patch.size).trim() === "") {
+      return res.status(400).json({ message: "size cannot be empty." });
+    }
 
     const updated = await Product.findByIdAndUpdate(
       id,
@@ -113,7 +132,7 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
   }
 }
 
-// POST /api/products/:id/status  { status: 'active' | ... }
+// POST /api/products/:id/status
 export async function setProductStatus(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;

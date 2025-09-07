@@ -14,6 +14,6 @@ function required(key: string, fallback?: string): string {
 
 export const MONGO_URL: string         = required('MONGO_URL',  'mongodb+srv://ecom:ecom@ecom1.eqe2d1h.mongodb.net/ecom?retryWrites=true&w=majority&appName=ecom1');
 export const JWT_SECRET: string        = required('JWT_SECRET', 'supersecret');
-export const ACCESS_TOKEN_TTL: string  = required('ACCESS_TOKEN_TTL',  '15m');
+export const ACCESS_TOKEN_TTL: string  = required('ACCESS_TOKEN_TTL',  '40m');
 export const REFRESH_TOKEN_TTL: string = required('REFRESH_TOKEN_TTL', '7d');
 export const PORT: number              = parseInt(required('PORT', '4000'), 10);
