@@ -1,7 +1,6 @@
 import { Schema, model, Document, Types } from 'mongoose';
 
 export type ProductStatus = 'active' | 'inactive' | 'draft' | 'archived';
-
 export interface ProductDoc extends Document {
   styleNumber: string;      // unique product-level style number
   title: string;
@@ -13,6 +12,7 @@ export interface ProductDoc extends Document {
   isDeleted: boolean;
   createdBy?: Types.ObjectId;
   updatedBy?: Types.ObjectId;
+
 }
 
 const ProductSchema = new Schema<ProductDoc>(
