@@ -1,22 +1,27 @@
 import { Router } from "express";
 import {
-  createProduct,
   listProducts,
+  createProduct,
   getProduct,
   updateProduct,
   setProductStatus,
   deleteProduct,
+  listSizesForProduct,   // <-- new
 } from "../controllers/product.controller";
 
-const r = Router();
+const router = Router();
 
-// base mount is typically: app.use("/api/products", r);
+// Collection
+router.get("/", listProducts);
+router.post("/", createProduct);
 
-r.post("/", createProduct);          // POST   /api/products
-r.get("/", listProducts);            // GET    /api/products
-r.get("/:id", getProduct);           // GET    /api/products/:id
-r.patch("/:id", updateProduct);      // PATCH  /api/products/:id
-r.post("/:id/status", setProductStatus); // POST /api/products/:id/status
-r.delete("/:id", deleteProduct);     // DELETE /api/products/:id  (soft)
+// Item-specific helpers (put this BEFORE "/:id")
+router.get("/:id/sizes", listSizesForProduct); // <-- IMPORTANT: before the next line
 
-export default r;
+// Item CRUD
+router.get("/:id", getProduct);
+router.patch("/:id", updateProduct);
+router.post("/:id/status", setProductStatus);
+router.delete("/:id", deleteProduct);
+
+export default router;

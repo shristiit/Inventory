@@ -21,9 +21,17 @@ type ProductRow = {
   _id: string;
   styleNumber: string;
   title: string;
-  size: string; // ✅ single size on the product
-  status: "active" | "inactive" | "draft" | "archived" | "Active" | "Inactive" | "Draft" | "Archived";
-  price: number;   // minor units (pence)
+  size: string; // single size on the product
+  status:
+    | "active"
+    | "inactive"
+    | "draft"
+    | "archived"
+    | "Active"
+    | "Inactive"
+    | "Draft"
+    | "Archived";
+  price: number; // minor units (pence)
   updatedAt?: string;
 };
 
@@ -49,6 +57,7 @@ function prettyStatus(s: string) {
   return v.charAt(0).toUpperCase() + v.slice(1);
 }
 
+/** Highlight matched text inside a cell */
 function highlight(text: string, q: string) {
   if (!q) return text;
   const i = text.toLowerCase().indexOf(q.toLowerCase());
@@ -74,8 +83,6 @@ export default function ProductsPage() {
   const fetchPage = useCallback(async (uiPage: number) => {
     setLoading(true);
     try {
-      // If you wired backend text-search (?q=...), you can pass it here:
-      // const { data } = await api.get<ListResponse>(`/api/products?page=${uiPage+1}&limit=${ITEMS_PER_PAGE}&q=${encodeURIComponent(searchTerm)}`);
       const { data } = await api.get<ListResponse>(
         `/api/products?page=${uiPage + 1}&limit=${ITEMS_PER_PAGE}`
       );
@@ -99,15 +106,16 @@ export default function ProductsPage() {
     [total]
   );
 
-  // Client-side filter (optional). If you prefer backend search, call fetchPage with q.
+  // Client-side filter (optional)
   const filtered = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter((r) =>
-      r.title.toLowerCase().includes(q) ||
-      r.styleNumber.toLowerCase().includes(q) ||
-      (r.size ?? "").toLowerCase().includes(q) ||
-      (r.status ?? "").toString().toLowerCase().includes(q)
+    return rows.filter(
+      (r) =>
+        r.title.toLowerCase().includes(q) ||
+        r.styleNumber.toLowerCase().includes(q) ||
+        (r.size ?? "").toLowerCase().includes(q) ||
+        (r.status ?? "").toString().toLowerCase().includes(q)
     );
   }, [rows, searchTerm]);
 
@@ -157,25 +165,25 @@ export default function ProductsPage() {
             {filtered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-sm text-gray-500">
-                  {searchTerm
-                    ? <>No matches for “{searchTerm}”.</>
-                    : <>No products found.</>}
+                  {searchTerm ? <>No matches for “{searchTerm}”.</> : <>No products found.</>}
                 </TableCell>
               </TableRow>
             ) : (
               filtered.map((p) => (
                 <TableRow key={p._id}>
+                  {/* Style No. links to product details */}
                   <TableCell className="font-mono">
-                    {highlight(p.styleNumber, searchTerm)}
-                  </TableCell>
-                  <TableCell>
                     <Link
                       href={`/Products/${p._id}`}
                       className="text-indigo-600 hover:underline"
                     >
-                      {highlight(p.title, searchTerm)}
+                      {highlight(p.styleNumber, searchTerm)}
                     </Link>
                   </TableCell>
+
+                  {/* Title is plain text (no link) */}
+                  <TableCell>{highlight(p.title, searchTerm)}</TableCell>
+
                   <TableCell>{highlight(p.size ?? "", searchTerm)}</TableCell>
                   <TableCell>{prettyStatus(String(p.status))}</TableCell>
                   <TableCell>{formatMinorGBP(p.price)}</TableCell>
