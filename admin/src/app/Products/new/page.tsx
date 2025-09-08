@@ -14,6 +14,12 @@ function toMinor(pounds: string | number) {
   return Number.isFinite(n) ? Math.round(n * 100) : null;
 }
 const norm = (v: string) => v.trim().toUpperCase();
+const toInt = (v: any) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
+};
+
+type Row = { size: string; quantity: number };
 
 export default function NewProductPage() {
   const router = useRouter();
@@ -22,41 +28,50 @@ export default function NewProductPage() {
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [priceGBP, setPriceGBP] = useState<string>("");
-  const [status, setStatus] = useState<"active" | "inactive" | "draft" | "archived">("active");
+  const [status, setStatus] =
+    useState<"active" | "inactive" | "draft" | "archived">("active");
   const [category, setCategory] = useState("");
   const [supplier, setSupplier] = useState("");
   const [season, setSeason] = useState("");
   const [wholesale, setWholesale] = useState<string>("");
 
-  // multi-size chips
-  const [sizes, setSizes] = useState<string[]>([]);
+  // sizes with quantities
+  const [sizeRows, setSizeRows] = useState<Row[]>([]);
   const [sizeInput, setSizeInput] = useState("");
 
   const [saving, setSaving] = useState(false);
 
-  const tryAddSize = (raw: string) => {
-    const token = norm(raw);
-    if (!token) return;
-    setSizes(prev => (prev.includes(token) ? prev : [...prev, token]));
+  const addSize = (raw: string) => {
+    const size = norm(raw);
+    if (!size) return;
+    setSizeRows((prev) =>
+      prev.some((r) => r.size === size) ? prev : [...prev, { size, quantity: 0 }]
+    );
     setSizeInput("");
   };
-  const removeSize = (token: string) => setSizes(prev => prev.filter(s => s !== token));
+  const removeSize = (size: string) =>
+    setSizeRows((prev) => prev.filter((r) => r.size !== size));
 
   const onSizeKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
     if (["Enter", "Tab", ",", " "].includes(e.key)) {
       e.preventDefault();
-      tryAddSize(sizeInput);
-      return;
+      addSize(sizeInput);
+    } else if (e.key === "Backspace" && !sizeInput) {
+      setSizeRows((prev) => prev.slice(0, -1));
     }
-    if (e.key === "Backspace" && !sizeInput) setSizes(prev => prev.slice(0, -1));
   };
   const onSizePaste: React.ClipboardEventHandler<HTMLInputElement> = (e) => {
     const text = e.clipboardData.getData("text");
     const tokens = [...new Set(text.split(/[, \s]+/g).map(norm).filter(Boolean))];
-    if (tokens.length) {
-      e.preventDefault();
-      setSizes(prev => [...new Set([...prev, ...tokens])]);
-    }
+    if (!tokens.length) return;
+    e.preventDefault();
+    setSizeRows((prev) => {
+      const next = [...prev];
+      for (const t of tokens) {
+        if (!next.some((r) => r.size === t)) next.push({ size: t, quantity: 0 });
+      }
+      return next;
+    });
   };
 
   async function onSave(e: React.FormEvent<HTMLFormElement>) {
@@ -70,7 +85,7 @@ export default function NewProductPage() {
     if (!name) return alert("Title is required.");
     if (!desc.trim()) return alert("Product must contain description.");
     if (priceMinor == null) return alert("Price is required and must be a valid number.");
-    if (!sizes.length) return alert("Add at least one size.");
+    if (!sizeRows.length) return alert("Add at least one size.");
 
     setSaving(true);
     try {
@@ -79,7 +94,8 @@ export default function NewProductPage() {
         title: name,
         description: desc.trim() || undefined,
         price: priceMinor,
-        sizes, // send array
+        // 👇 send sizes with quantities
+        items: sizeRows.map((r) => ({ size: r.size, quantity: r.quantity })),
         attributes: {
           category: category || undefined,
           supplier: supplier || undefined,
@@ -92,9 +108,7 @@ export default function NewProductPage() {
         status,
       };
 
-      console.log("➡️ POST /api/products", product);
       await api.post("/api/products", { product });
-
       router.push("/Products");
     } catch (err: any) {
       alert(err?.response?.data?.message || err?.message || "Failed to create product.");
@@ -107,11 +121,14 @@ export default function NewProductPage() {
     <div className="p-4 space-y-6 max-w-5xl">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Create Product</h1>
-        <Link href="/Products" className="underline">Back to Products</Link>
+        <Link href="/Products" className="underline">
+          Back to Products
+        </Link>
       </div>
 
       <form onSubmit={onSave} className="space-y-8">
         <section className="grid grid-cols-1 md:grid-cols-2 gap-4 border rounded p-4">
+          {/* ...styleNumber, title, price fields unchanged... */}
           <div>
             <Label className="m-2">Style Number</Label>
             <Input value={styleNumber} onChange={(e) => setStyleNumber(e.target.value)} required placeholder="STY-900001" />
@@ -127,6 +144,7 @@ export default function NewProductPage() {
             <Input type="number" step="0.01" min="0" required value={priceGBP} onChange={(e) => setPriceGBP(e.target.value)} placeholder="123.45" />
           </div>
 
+          {/* Sizes input + quantities table */}
           <div className="md:col-span-2">
             <Label className="m-2">Sizes</Label>
             <Input
@@ -135,21 +153,60 @@ export default function NewProductPage() {
               onChange={(e) => setSizeInput(e.target.value)}
               onKeyDown={onSizeKeyDown}
               onPaste={onSizePaste}
-              onBlur={() => tryAddSize(sizeInput)}
+              onBlur={() => addSize(sizeInput)}
               placeholder="Type size then Enter (e.g., S). You can paste: S, M, L"
             />
-            <div className="flex flex-wrap gap-2 mt-2">
-              {sizes.map((s) => (
-                <span key={s} className="inline-flex items-center rounded-full border px-2 py-1 text-sm">
-                  {s}
-                  <button type="button" className="ml-1 text-xs opacity-60 hover:opacity-100" onClick={() => removeSize(s)}>
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
+
+            {sizeRows.length > 0 && (
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-full text-sm border rounded">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="text-left p-2 border">Size</th>
+                      <th className="text-left p-2 border">Quantity</th>
+                      <th className="p-2 border w-16">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sizeRows.map((r, idx) => (
+                      <tr key={r.size}>
+                        <td className="p-2 border">{r.size}</td>
+                        <td className="p-2 border">
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            step={1}
+                            value={String(r.quantity)}
+                            onChange={(e) => {
+                              const n = toInt(e.target.value);
+                              setSizeRows((prev) => {
+                                const next = [...prev];
+                                next[idx] = { ...next[idx], quantity: n };
+                                return next;
+                              });
+                            }}
+                          />
+                        </td>
+                        <td className="p-2 border text-center">
+                          <button
+                            type="button"
+                            className="text-red-600"
+                            onClick={() => removeSize(r.size)}
+                            aria-label={`Remove size ${r.size}`}
+                          >
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
+          {/* status, description, attributes ... */}
           <div>
             <Label className="m-2">Status</Label>
             <select className="w-full h-10 border rounded px-3" value={status} onChange={(e) => setStatus(e.target.value as any)}>
@@ -169,17 +226,14 @@ export default function NewProductPage() {
             <Label className="m-2">Category</Label>
             <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Shoes" />
           </div>
-
           <div>
             <Label className="m-2">Supplier</Label>
             <Input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Supplier name" />
           </div>
-
           <div>
             <Label className="m-2">Season</Label>
             <Input value={season} onChange={(e) => setSeason(e.target.value)} placeholder="SS25" />
           </div>
-
           <div>
             <Label className="m-2">Cost Price (£)</Label>
             <Input type="number" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} placeholder="e.g., 45.00" />

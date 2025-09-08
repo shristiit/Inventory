@@ -28,6 +28,7 @@ type Product = {
   description?: string;
   price: number; // pence
   size: string;
+  quantity?: number; // 👈 NEW
   status: ProductStatus;
   attributes?: Record<string, any>;
   isDeleted?: boolean;
@@ -55,6 +56,10 @@ function fmtGBP(minor?: number) {
   if (typeof minor !== "number") return "—";
   return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(minor / 100);
 }
+const toNonNegInt = (v: any) => {
+  const n = Math.trunc(Number(v));
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+};
 
 const PRODUCT_STATUSES: ProductStatus[] = ["active", "inactive", "draft", "archived"];
 
@@ -73,6 +78,7 @@ export default function ProductDetailsPage() {
   const [sizes, setSizes] = useState<Product[]>([]);
   const [sizesLoading, setSizesLoading] = useState(false);
   const [sizesError, setSizesError] = useState<string | null>(null);
+  const [savingRowId, setSavingRowId] = useState<string | null>(null); // 👈 NEW
 
   // form state
   const [styleNumber, setStyleNumber] = useState("");
@@ -113,7 +119,8 @@ export default function ProductDetailsPage() {
     setSizesError(null);
     try {
       const { data } = await api.get<SiblingsResponse>(`/api/products/${productId}/sizes`);
-      setSizes((data.rows || []).sort((a, b) => (a.size || "").localeCompare(b.size || "")));
+      const sorted = (data.rows || []).sort((a, b) => (a.size || "").localeCompare(b.size || ""));
+      setSizes(sorted);
     } catch (e: any) {
       setSizesError(e?.response?.data?.message || "Failed to load sizes.");
       setSizes([]);
@@ -205,6 +212,30 @@ export default function ProductDetailsPage() {
       setError(e?.response?.data?.message || "Failed to archive product.");
     }
   }
+
+  /* ---------- quantity editing per row ---------- */
+  const onChangeQty = (rowId: string, val: string) => {
+    const nextQty = toNonNegInt(val);
+    setSizes((prev) =>
+      prev.map((r) => (r._id === rowId ? { ...r, quantity: nextQty } : r))
+    );
+  };
+
+  const saveQty = async (row: Product) => {
+    try {
+      setSavingRowId(row._id);
+      // Controller accepts either { quantity } or { product: { quantity } }
+      const { data } = await api.patch<Product>(`/api/products/${row._id}`, {
+        quantity: toNonNegInt(row.quantity ?? 0),
+      });
+      // reflect server canonical values (including updatedAt)
+      setSizes((prev) => prev.map((r) => (r._id === row._id ? { ...r, quantity: data.quantity, updatedAt: data.updatedAt } : r)));
+    } catch (e: any) {
+      alert(e?.response?.data?.message || "Failed to update quantity.");
+    } finally {
+      setSavingRowId(null);
+    }
+  };
 
   /* ---------- UI ---------- */
   if (loading) return <div className="p-4">Loading…</div>;
@@ -322,16 +353,18 @@ export default function ProductDetailsPage() {
                 <TableHead>Style No.</TableHead>
                 <TableHead>Title</TableHead>
                 <TableHead>Size</TableHead>
+                <TableHead>Qty</TableHead> {/* 👈 NEW */}
                 <TableHead>Status</TableHead>
                 <TableHead>Price</TableHead>
                 <TableHead>Updated</TableHead>
                 <TableHead>Open</TableHead>
+                <TableHead>Action</TableHead> {/* 👈 NEW */}
               </TableRow>
             </TableHeader>
             <TableBody>
               {sizesLoading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-sm text-gray-500 py-6">
+                  <TableCell colSpan={9} className="text-center text-sm text-gray-500 py-6">
                     Loading sizes…
                   </TableCell>
                 </TableRow>
@@ -345,6 +378,19 @@ export default function ProductDetailsPage() {
                         {row.size}
                       </span>
                     </TableCell>
+
+                    {/* 👇 Editable quantity */}
+                    <TableCell className="w-36">
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1}
+                        className="tabular-nums"
+                        value={String(row.quantity ?? 0)}
+                        onChange={(e) => onChangeQty(row._id, e.target.value)}
+                      />
+                    </TableCell>
+
                     <TableCell>{row.status}</TableCell>
                     <TableCell>{fmtGBP(row.price)}</TableCell>
                     <TableCell>{row.updatedAt ? new Date(row.updatedAt).toLocaleString() : "—"}</TableCell>
@@ -353,11 +399,18 @@ export default function ProductDetailsPage() {
                         View
                       </Link>
                     </TableCell>
+
+                    {/* Save button per row */}
+                    <TableCell className="w-28">
+                      <Button size="sm" onClick={() => saveQty(row)} disabled={savingRowId === row._id}>
+                        {savingRowId === row._id ? "Saving…" : "Save"}
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-sm text-gray-500 py-6">
+                  <TableCell colSpan={9} className="text-center text-sm text-gray-500 py-6">
                     No sizes found for this style.
                   </TableCell>
                 </TableRow>

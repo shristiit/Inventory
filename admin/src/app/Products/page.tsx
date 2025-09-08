@@ -12,16 +12,17 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Edit2, Plus, Trash2, ViewIcon } from "lucide-react"; // 👈 import Trash2
 import api from "@/lib/api";
 import { Input } from "@/components/ui/input";
 
-/** ---- API types (matches your current model/controller) ---- */
+/** ---- API types (matches your model/controller) ---- */
 type ProductRow = {
   _id: string;
   styleNumber: string;
   title: string;
-  size: string; // single size on the product
+  size: string;
+  quantity?: number;
   status:
     | "active"
     | "inactive"
@@ -79,6 +80,7 @@ export default function ProductsPage() {
   const [page, setPage] = useState(0); // 0-based for UI
   const [total, setTotal] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null); // 👈 new
 
   const fetchPage = useCallback(async (uiPage: number) => {
     setLoading(true);
@@ -106,18 +108,34 @@ export default function ProductsPage() {
     [total]
   );
 
-  // Client-side filter (optional)
   const filtered = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter(
-      (r) =>
+    return rows.filter((r) => {
+      const qty = (r.quantity ?? 0).toString();
+      return (
         r.title.toLowerCase().includes(q) ||
         r.styleNumber.toLowerCase().includes(q) ||
         (r.size ?? "").toLowerCase().includes(q) ||
-        (r.status ?? "").toString().toLowerCase().includes(q)
-    );
+        (r.status ?? "").toString().toLowerCase().includes(q) ||
+        qty.includes(q)
+      );
+    });
   }, [rows, searchTerm]);
+
+  async function handleDelete(id: string) {
+    if (!confirm("Are you sure you want to delete (archive) this product row?")) return;
+    try {
+      setDeletingId(id);
+      await api.delete(`/api/products/${id}`); // 204 on success
+      // Refresh the current page from server to keep pagination/total correct
+      await fetchPage(page);
+    } catch (err: any) {
+      alert(err?.response?.data?.message || "Failed to delete product.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   if (loading) {
     return <div className="p-6 text-lg font-medium">Loading products…</div>;
@@ -131,7 +149,7 @@ export default function ProductsPage() {
           <Input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search Title, Style, Size, Status"
+            placeholder="Search Title, Style, Size, Status, Qty"
             className="w-72"
           />
           <Button
@@ -154,6 +172,7 @@ export default function ProductsPage() {
               <TableHead className="font-semibold">Style No.</TableHead>
               <TableHead className="font-semibold">Title</TableHead>
               <TableHead className="font-semibold">Size</TableHead>
+              <TableHead className="font-semibold">Qty</TableHead>
               <TableHead className="font-semibold">Status</TableHead>
               <TableHead className="font-semibold">Price</TableHead>
               <TableHead className="font-semibold">Last Updated</TableHead>
@@ -164,49 +183,43 @@ export default function ProductsPage() {
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-sm text-gray-500">
+                <TableCell colSpan={8} className="text-sm text-gray-500">
                   {searchTerm ? <>No matches for “{searchTerm}”.</> : <>No products found.</>}
                 </TableCell>
               </TableRow>
             ) : (
               filtered.map((p) => (
                 <TableRow key={p._id}>
-                  {/* Style No. links to product details */}
                   <TableCell className="font-mono">
-                    <Link
-                      href={`/Products/${p._id}`}
-                      className="text-indigo-600 hover:underline"
-                    >
+                    <Link href={`/Products/${p._id}`} className="text-indigo-600 hover:underline">
                       {highlight(p.styleNumber, searchTerm)}
                     </Link>
                   </TableCell>
 
-                  {/* Title is plain text (no link) */}
                   <TableCell>{highlight(p.title, searchTerm)}</TableCell>
-
                   <TableCell>{highlight(p.size ?? "", searchTerm)}</TableCell>
+                  <TableCell className="tabular-nums">{p.quantity ?? 0}</TableCell>
                   <TableCell>{prettyStatus(String(p.status))}</TableCell>
                   <TableCell>{formatMinorGBP(p.price)}</TableCell>
                   <TableCell>
-                    {p.updatedAt
-                      ? new Date(p.updatedAt).toLocaleString("en-GB")
-                      : "—"}
+                    {p.updatedAt ? new Date(p.updatedAt).toLocaleString("en-GB") : "—"}
                   </TableCell>
+
                   <TableCell>
-                    <div className="flex gap-2">
-                      <Link
-                        href={`/Products/${p._id}`}
-                        className="text-indigo-600 hover:underline"
-                      >
-                        View
+                    <div className="flex flex-wrap gap-2">
+                      <Link href={`/Products/${p._id}`} className="text-indigo-600 hover:underline">
+                        <ViewIcon  className="h-4"/>
                       </Link>
                       <span className="opacity-30">|</span>
-                      <Link
-                        href={`/Products/edit/${p._id}`}
-                        className="text-indigo-600 hover:underline"
+                      
+                      {/* 👇 Real delete action */}
+                      <button className="text-red-500"
+                        onClick={() => handleDelete(p._id)}
+                        aria-label="Delete product"
                       >
-                        Edit
-                      </Link>
+                        <Trash2 className="h-4"/>
+                        {deletingId === p._id ? "Deleting…" : ""}
+                      </button>
                     </div>
                   </TableCell>
                 </TableRow>

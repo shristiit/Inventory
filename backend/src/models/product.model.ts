@@ -6,8 +6,9 @@ export interface ProductDoc extends Document {
   styleNumber: string;      // same for all sizes in the style
   title: string;
   description?: string;
-  price: number;            // minor units (pence)
+  price: Number;            // minor units (pence)
   size: string;             // one size per document
+  quantity: number
   attributes?: Record<string, any>;
   status: ProductStatus;
   isDeleted: boolean;
@@ -22,6 +23,7 @@ const ProductSchema = new Schema<ProductDoc>(
     description: { type: String },
     price:       { type: Number, required: true, min: 0 },
     size:        { type: String, required: true, trim: true, index: true },
+    quantity : {type:Number, required:true},
     attributes:  { type: Schema.Types.Mixed },
     status:      { type: String, enum: ["active","inactive","draft","archived"], default: "draft", index: true },
     isDeleted:   { type: Boolean, default: false, index: true },

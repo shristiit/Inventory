@@ -5,6 +5,10 @@ import Product from "../models/product.model";
 type ProductStatus = "active" | "inactive" | "draft" | "archived";
 
 const norm = (v: any) => String(v ?? "").trim().toUpperCase();
+const toInt = (v: any, def = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : def;
+};
 
 const pickUpdatable = (src: any) => {
   const out: any = {};
@@ -13,13 +17,52 @@ const pickUpdatable = (src: any) => {
   if (src.description != null) out.description = String(src.description);
   if (src.price != null) out.price = Number(src.price);
   if (src.size != null) out.size = String(src.size);
+  if (src.quantity != null) out.quantity = Number(src.quantity); // allow updating quantity
   if (src.attributes != null) out.attributes = src.attributes;
   if (src.status != null) out.status = src.status as ProductStatus;
   return out;
 };
 
+// ---- helpers to parse sizes with quantities ----
+type SizeLike =
+  | string
+  | { size?: string; quantity?: number | string; qty?: number | string };
+
+function parseSizes(body: any): Array<{ size: string; quantity: number }> {
+  let sizes: SizeLike[] = [];
+
+  if (Array.isArray(body.items) && body.items.length) {
+    sizes = body.items;
+  } else if (Array.isArray(body.sizes) && body.sizes.length) {
+    sizes = body.sizes;
+  } else if (body.size) {
+    sizes = [{ size: body.size, quantity: body.quantity ?? body.qty }];
+  }
+
+  // normalize and validate
+  const entries = sizes
+    .map((s) =>
+      typeof s === "string"
+        ? { size: norm(s), quantity: 0 }
+        : { size: norm(s.size), quantity: toInt(s.quantity ?? s.qty ?? 0) }
+    )
+    .filter((x) => !!x.size);
+
+  if (!entries.length) return [];
+
+  // dedupe by size, summing quantities if repeated
+  const map = new Map<string, number>();
+  for (const { size, quantity } of entries) {
+    map.set(size, (map.get(size) ?? 0) + toInt(quantity, 0));
+  }
+  return Array.from(map, ([size, quantity]) => ({ size, quantity }));
+}
+
 // POST /api/products
-// Accepts: { size: "M" } or { sizes: ["S","M","L"] } or { items: [{size:"S"}, ...] }
+// Accepts:
+//   { size: "M", quantity: 5 }
+//   { sizes: ["S","M","L"] }            // quantities default to 0
+//   { items: [{ size:"S", quantity:3 }, { size:"M", quantity:7 }] }
 export async function createProduct(req: Request, res: Response, next: NextFunction) {
   try {
     const body = (req.body?.product ?? req.body) || {};
@@ -32,18 +75,12 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
       return res.status(400).json({ message: "price is required and must be a number." });
     }
 
-    // collect sizes
-    let sizeTokens: string[] = [];
-    if (Array.isArray(body.items) && body.items.length) {
-      sizeTokens = body.items.map((it: any) => norm(it.size)).filter(Boolean);
-    } else if (Array.isArray(body.sizes) && body.sizes.length) {
-      sizeTokens = body.sizes.map((s: any) => norm(s)).filter(Boolean);
-    } else if (body.size) {
-      sizeTokens = [norm(body.size)];
-    }
-    sizeTokens = [...new Set(sizeTokens)];
-    if (!sizeTokens.length) {
-      return res.status(400).json({ message: "At least one size is required (use size, sizes[], or items[])." });
+    // collect sizes with quantities
+    const sizeRows = parseSizes(body);
+    if (!sizeRows.length) {
+      return res
+        .status(400)
+        .json({ message: "At least one size is required (use size, sizes[], or items[])." });
     }
 
     const sNum = norm(styleNumber);
@@ -56,7 +93,13 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
       status: (status as ProductStatus) ?? "active",
       createdBy: (req as any).user?._id,
     };
-    const docs = sizeTokens.map((sz) => ({ ...base, size: sz }));
+
+    const docs = sizeRows.map(({ size, quantity }) => ({
+      ...base,
+      size,
+      quantity, // quantity per size row
+    }));
+
     const created = await Product.insertMany(docs, { ordered: false });
 
     return res.status(201).json({ count: created.length, created });
@@ -148,11 +191,19 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
     }
 
     const patch = pickUpdatable(req.body?.product ?? req.body);
+
     if (patch.price != null && !Number.isFinite(Number(patch.price))) {
       return res.status(400).json({ message: "price must be a number." });
     }
     if (patch.size != null && String(patch.size).trim() === "") {
       return res.status(400).json({ message: "size cannot be empty." });
+    }
+    if (patch.quantity != null) {
+      const n = Number(patch.quantity);
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
+        return res.status(400).json({ message: "quantity must be a non-negative integer." });
+      }
+      patch.quantity = n;
     }
 
     const updated = await Product.findByIdAndUpdate(
