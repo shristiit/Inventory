@@ -10,59 +10,74 @@ const toInt = (v: any, def = 0) => {
   return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : def;
 };
 
+// fields allowed in PATCH
 const pickUpdatable = (src: any) => {
   const out: any = {};
   if (src.styleNumber != null) out.styleNumber = String(src.styleNumber);
   if (src.title != null) out.title = String(src.title);
   if (src.description != null) out.description = String(src.description);
   if (src.price != null) out.price = Number(src.price);
+  if (src.color != null) out.color = String(src.color);     // 👈 allow color update
   if (src.size != null) out.size = String(src.size);
-  if (src.quantity != null) out.quantity = Number(src.quantity); // allow updating quantity
+  if (src.quantity != null) out.quantity = Number(src.quantity);
   if (src.attributes != null) out.attributes = src.attributes;
   if (src.status != null) out.status = src.status as ProductStatus;
   return out;
 };
 
-// ---- helpers to parse sizes with quantities ----
-type SizeLike =
-  | string
-  | { size?: string; quantity?: number | string; qty?: number | string };
-
-function parseSizes(body: any): Array<{ size: string; quantity: number }> {
-  let sizes: SizeLike[] = [];
-
+/**
+ * Parse color+size+quantity rows.
+ * Accepts any of:
+ *  - { items: [{ color, size, quantity }] }
+ *  - { items: [{ size, quantity }], color: "BLACK" }       // fallback color
+ *  - { sizes: ["S","M"], color: "BLACK" }                  // quantity→0
+ *  - { size: "M", quantity: 3, color: "BLACK" }
+ */
+function parseColorSizeRows(body: any): Array<{ color: string; size: string; quantity: number }> {
   if (Array.isArray(body.items) && body.items.length) {
-    sizes = body.items;
-  } else if (Array.isArray(body.sizes) && body.sizes.length) {
-    sizes = body.sizes;
-  } else if (body.size) {
-    sizes = [{ size: body.size, quantity: body.quantity ?? body.qty }];
+    const rows = body.items
+      .map((it: any) => ({
+        color: norm(it?.color ?? body.color ?? "UNSPECIFIED"),
+        size: norm(it?.size),
+        quantity: toInt(it?.quantity ?? it?.qty ?? 0),
+      }))
+      .filter((r) => !!r.size && !!r.color);
+
+    // de-dupe by (color,size) while summing quantities
+    const map = new Map<string, number>();
+    for (const r of rows) {
+      const k = `${r.color}__${r.size}`;
+      map.set(k, (map.get(k) ?? 0) + r.quantity);
+    }
+    return Array.from(map, ([k, quantity]) => {
+      const [color, size] = k.split("__");
+      return { color, size, quantity };
+    });
   }
 
-  // normalize and validate
-  const entries = sizes
-    .map((s) =>
-      typeof s === "string"
-        ? { size: norm(s), quantity: 0 }
-        : { size: norm(s.size), quantity: toInt(s.quantity ?? s.qty ?? 0) }
-    )
-    .filter((x) => !!x.size);
-
-  if (!entries.length) return [];
-
-  // dedupe by size, summing quantities if repeated
-  const map = new Map<string, number>();
-  for (const { size, quantity } of entries) {
-    map.set(size, (map.get(size) ?? 0) + toInt(quantity, 0));
+  if (Array.isArray(body.sizes) && body.sizes.length) {
+    const color = norm(body.color ?? "UNSPECIFIED");
+    return [...new Set(body.sizes.map((s: any) => norm(s)).filter(Boolean))].map((size) => ({
+      color,
+      size,
+      quantity: 0,
+    }));
   }
-  return Array.from(map, ([size, quantity]) => ({ size, quantity }));
+
+  if (body.size) {
+    return [
+      {
+        color: norm(body.color ?? "UNSPECIFIED"),
+        size: norm(body.size),
+        quantity: toInt(body.quantity ?? body.qty ?? 0),
+      },
+    ];
+  }
+
+  return [];
 }
 
 // POST /api/products
-// Accepts:
-//   { size: "M", quantity: 5 }
-//   { sizes: ["S","M","L"] }            // quantities default to 0
-//   { items: [{ size:"S", quantity:3 }, { size:"M", quantity:7 }] }
 export async function createProduct(req: Request, res: Response, next: NextFunction) {
   try {
     const body = (req.body?.product ?? req.body) || {};
@@ -75,12 +90,12 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
       return res.status(400).json({ message: "price is required and must be a number." });
     }
 
-    // collect sizes with quantities
-    const sizeRows = parseSizes(body);
-    if (!sizeRows.length) {
-      return res
-        .status(400)
-        .json({ message: "At least one size is required (use size, sizes[], or items[])." });
+    const rows = parseColorSizeRows(body);
+    if (!rows.length) {
+      return res.status(400).json({
+        message:
+          "At least one item is required. Provide items[{color,size,quantity}] or color + sizes[].",
+      });
     }
 
     const sNum = norm(styleNumber);
@@ -94,19 +109,19 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
       createdBy: (req as any).user?._id,
     };
 
-    const docs = sizeRows.map(({ size, quantity }) => ({
+    const docs = rows.map(({ color, size, quantity }) => ({
       ...base,
+      color,
       size,
-      quantity, // quantity per size row
+      quantity,
     }));
 
     const created = await Product.insertMany(docs, { ordered: false });
-
     return res.status(201).json({ count: created.length, created });
   } catch (err: any) {
     if (err?.code === 11000) {
       return res.status(409).json({
-        message: "Some sizes already exist for this styleNumber.",
+        message: "Some color/size rows already exist for this styleNumber.",
         code: "DUPLICATE_KEY",
         keyValue: err.keyValue,
       });
@@ -159,7 +174,7 @@ export async function getProduct(req: Request, res: Response, next: NextFunction
   }
 }
 
-// NEW: GET /api/products/:id/sizes  -> all rows with the same styleNumber
+// GET /api/products/:id/sizes  -> all rows with the same styleNumber (all colors+sizes)
 export async function listSizesForProduct(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
@@ -173,7 +188,7 @@ export async function listSizesForProduct(req: Request, res: Response, next: Nex
       { styleNumber: base.styleNumber, isDeleted: false },
       { __v: 0 }
     )
-      .sort({ size: 1, updatedAt: -1 })
+      .sort({ color: 1, size: 1, updatedAt: -1 })
       .lean();
 
     return res.json({ styleNumber: base.styleNumber, count: rows.length, rows });
@@ -198,6 +213,9 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
     if (patch.size != null && String(patch.size).trim() === "") {
       return res.status(400).json({ message: "size cannot be empty." });
     }
+    if (patch.color != null && String(patch.color).trim() === "") {
+      return res.status(400).json({ message: "color cannot be empty." });
+    }
     if (patch.quantity != null) {
       const n = Number(patch.quantity);
       if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
@@ -208,13 +226,28 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
 
     const updated = await Product.findByIdAndUpdate(
       id,
-      { $set: { ...patch, updatedBy: (req as any).user?._id } },
-      { new: true }
+      {
+        $set: {
+          ...patch,
+          ...(patch.styleNumber != null ? { styleNumber: norm(patch.styleNumber) } : {}),
+          ...(patch.color != null ? { color: norm(patch.color) } : {}),
+          ...(patch.size != null ? { size: norm(patch.size) } : {}),
+          updatedBy: (req as any).user?._id,
+        },
+      },
+      { new: true, runValidators: true }
     ).lean();
 
     if (!updated) return res.status(404).json({ message: "Not found" });
     return res.json(updated);
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 11000) {
+      return res.status(409).json({
+        message: "A row with this styleNumber + color + size already exists.",
+        code: "DUPLICATE_KEY",
+        keyValue: err.keyValue,
+      });
+    }
     next(err);
   }
 }

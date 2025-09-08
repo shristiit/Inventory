@@ -9,71 +9,131 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/app/Components/textarea";
 
-function toMinor(pounds: string | number) {
-  const n = Number(pounds);
-  return Number.isFinite(n) ? Math.round(n * 100) : null;
-}
+type Status = "active" | "inactive" | "draft" | "archived";
+
+type SizeRow = { size: string; quantity: number };
+type ColorBlock = { id: string; color: string; sizeInput: string; sizeRows: SizeRow[] };
+
 const norm = (v: string) => v.trim().toUpperCase();
 const toInt = (v: any) => {
   const n = Number(v);
   return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
 };
-
-type Row = { size: string; quantity: number };
+function toMinor(pounds: string | number) {
+  const n = Number(pounds);
+  return Number.isFinite(n) ? Math.round(n * 100) : null;
+}
+const uid = () => Math.random().toString(36).slice(2, 9);
 
 export default function NewProductPage() {
   const router = useRouter();
 
+  // core product fields
   const [styleNumber, setStyleNumber] = useState("");
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [priceGBP, setPriceGBP] = useState<string>("");
-  const [status, setStatus] =
-    useState<"active" | "inactive" | "draft" | "archived">("active");
+  const [status, setStatus] = useState<Status>("active");
+
+  // optional attributes
   const [category, setCategory] = useState("");
   const [supplier, setSupplier] = useState("");
   const [season, setSeason] = useState("");
   const [wholesale, setWholesale] = useState<string>("");
 
-  // sizes with quantities
-  const [sizeRows, setSizeRows] = useState<Row[]>([]);
-  const [sizeInput, setSizeInput] = useState("");
+  // colors (each with its own sizes)
+  const [colorInput, setColorInput] = useState("");
+  const [blocks, setBlocks] = useState<ColorBlock[]>([]);
 
   const [saving, setSaving] = useState(false);
 
-  const addSize = (raw: string) => {
+  // ---- color block helpers ----
+  function addColor(raw: string) {
+    const color = norm(raw);
+    if (!color) return;
+    // avoid duplicate color blocks
+    if (blocks.some((b) => b.color === color)) {
+      setColorInput("");
+      return;
+    }
+    setBlocks((prev) => [...prev, { id: uid(), color, sizeInput: "", sizeRows: [] }]);
+    setColorInput("");
+  }
+
+  function removeColor(id: string) {
+    setBlocks((prev) => prev.filter((b) => b.id !== id));
+  }
+
+  function updateColorLabel(id: string, raw: string) {
+    const color = norm(raw);
+    setBlocks((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, color } : b))
+    );
+  }
+
+  // ---- per-block size helpers ----
+  function addSize(blockId: string, raw: string) {
     const size = norm(raw);
     if (!size) return;
-    setSizeRows((prev) =>
-      prev.some((r) => r.size === size) ? prev : [...prev, { size, quantity: 0 }]
+    setBlocks((prev) =>
+      prev.map((b) => {
+        if (b.id !== blockId) return b;
+        if (b.sizeRows.some((r) => r.size === size)) return { ...b, sizeInput: "" };
+        return {
+          ...b,
+          sizeInput: "",
+          sizeRows: [...b.sizeRows, { size, quantity: 0 }],
+        };
+      })
     );
-    setSizeInput("");
-  };
-  const removeSize = (size: string) =>
-    setSizeRows((prev) => prev.filter((r) => r.size !== size));
+  }
 
-  const onSizeKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
+  function removeSize(blockId: string, size: string) {
+    setBlocks((prev) =>
+      prev.map((b) =>
+        b.id === blockId
+          ? { ...b, sizeRows: b.sizeRows.filter((r) => r.size !== size) }
+          : b
+      )
+    );
+  }
+
+  function updateSizeQty(blockId: string, size: string, q: number) {
+    setBlocks((prev) =>
+      prev.map((b) =>
+        b.id === blockId
+          ? {
+              ...b,
+              sizeRows: b.sizeRows.map((r) =>
+                r.size === size ? { ...r, quantity: q } : r
+              ),
+            }
+          : b
+      )
+    );
+  }
+
+  // ---- paste / key handlers ----
+  function onSizeKeyDown(
+    e: React.KeyboardEvent<HTMLInputElement>,
+    blockId: string,
+    value: string
+  ) {
     if (["Enter", "Tab", ",", " "].includes(e.key)) {
       e.preventDefault();
-      addSize(sizeInput);
-    } else if (e.key === "Backspace" && !sizeInput) {
-      setSizeRows((prev) => prev.slice(0, -1));
+      addSize(blockId, value);
     }
-  };
-  const onSizePaste: React.ClipboardEventHandler<HTMLInputElement> = (e) => {
+  }
+
+  function onSizePaste(e: React.ClipboardEvent<HTMLInputElement>, blockId: string) {
     const text = e.clipboardData.getData("text");
     const tokens = [...new Set(text.split(/[, \s]+/g).map(norm).filter(Boolean))];
     if (!tokens.length) return;
     e.preventDefault();
-    setSizeRows((prev) => {
-      const next = [...prev];
-      for (const t of tokens) {
-        if (!next.some((r) => r.size === t)) next.push({ size: t, quantity: 0 });
-      }
-      return next;
-    });
-  };
+    tokens.forEach((t) => addSize(blockId, t));
+  }
 
+  // ---- submit ----
   async function onSave(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
@@ -85,17 +145,26 @@ export default function NewProductPage() {
     if (!name) return alert("Title is required.");
     if (!desc.trim()) return alert("Product must contain description.");
     if (priceMinor == null) return alert("Price is required and must be a valid number.");
-    if (!sizeRows.length) return alert("Add at least one size.");
+    if (!blocks.length) return alert("Add at least one color.");
+    if (!blocks.some((b) => b.sizeRows.length)) return alert("Add at least one size for a color.");
+
+    // Build items: one row per (color, size)
+    const items = blocks.flatMap((b) =>
+      b.sizeRows.map((r) => ({
+        color: b.color,
+        size: r.size,
+        quantity: r.quantity,
+      }))
+    );
 
     setSaving(true);
     try {
-      const product = {
-        styleNumber: style.toUpperCase(),
+      const payload = {
+        styleNumber: norm(style),
         title: name,
         description: desc.trim() || undefined,
         price: priceMinor,
-        // 👇 send sizes with quantities
-        items: sizeRows.map((r) => ({ size: r.size, quantity: r.quantity })),
+        items, // <-- [{ color, size, quantity }]
         attributes: {
           category: category || undefined,
           supplier: supplier || undefined,
@@ -108,7 +177,7 @@ export default function NewProductPage() {
         status,
       };
 
-      await api.post("/api/products", { product });
+      await api.post("/api/products", { product: payload });
       router.push("/Products");
     } catch (err: any) {
       alert(err?.response?.data?.message || err?.message || "Failed to create product.");
@@ -118,7 +187,7 @@ export default function NewProductPage() {
   }
 
   return (
-    <div className="p-4 space-y-6 max-w-5xl">
+    <div className="p-4 space-y-6 max-w-6xl">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Create Product</h1>
         <Link href="/Products" className="underline">
@@ -127,89 +196,48 @@ export default function NewProductPage() {
       </div>
 
       <form onSubmit={onSave} className="space-y-8">
+        {/* ---------- Core fields ---------- */}
         <section className="grid grid-cols-1 md:grid-cols-2 gap-4 border rounded p-4">
-          {/* ...styleNumber, title, price fields unchanged... */}
           <div>
             <Label className="m-2">Style Number</Label>
-            <Input value={styleNumber} onChange={(e) => setStyleNumber(e.target.value)} required placeholder="STY-900001" />
+            <Input
+              value={styleNumber}
+              onChange={(e) => setStyleNumber(e.target.value)}
+              required
+              placeholder="STY-900001"
+            />
           </div>
 
           <div>
             <Label className="m-2">Title</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="Test Runner" />
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+              placeholder="Basic Tee"
+            />
           </div>
 
           <div>
             <Label className="m-2">Price (£)</Label>
-            <Input type="number" step="0.01" min="0" required value={priceGBP} onChange={(e) => setPriceGBP(e.target.value)} placeholder="123.45" />
-          </div>
-
-          {/* Sizes input + quantities table */}
-          <div className="md:col-span-2">
-            <Label className="m-2">Sizes</Label>
             <Input
-              type="text"
-              value={sizeInput}
-              onChange={(e) => setSizeInput(e.target.value)}
-              onKeyDown={onSizeKeyDown}
-              onPaste={onSizePaste}
-              onBlur={() => addSize(sizeInput)}
-              placeholder="Type size then Enter (e.g., S). You can paste: S, M, L"
+              type="number"
+              step="0.01"
+              min="0"
+              required
+              value={priceGBP}
+              onChange={(e) => setPriceGBP(e.target.value)}
+              placeholder="19.99"
             />
-
-            {sizeRows.length > 0 && (
-              <div className="mt-3 overflow-x-auto">
-                <table className="min-w-full text-sm border rounded">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="text-left p-2 border">Size</th>
-                      <th className="text-left p-2 border">Quantity</th>
-                      <th className="p-2 border w-16">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sizeRows.map((r, idx) => (
-                      <tr key={r.size}>
-                        <td className="p-2 border">{r.size}</td>
-                        <td className="p-2 border">
-                          <Input
-                            type="number"
-                            inputMode="numeric"
-                            min={0}
-                            step={1}
-                            value={String(r.quantity)}
-                            onChange={(e) => {
-                              const n = toInt(e.target.value);
-                              setSizeRows((prev) => {
-                                const next = [...prev];
-                                next[idx] = { ...next[idx], quantity: n };
-                                return next;
-                              });
-                            }}
-                          />
-                        </td>
-                        <td className="p-2 border text-center">
-                          <button
-                            type="button"
-                            className="text-red-600"
-                            onClick={() => removeSize(r.size)}
-                            aria-label={`Remove size ${r.size}`}
-                          >
-                            ×
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
 
-          {/* status, description, attributes ... */}
           <div>
             <Label className="m-2">Status</Label>
-            <select className="w-full h-10 border rounded px-3" value={status} onChange={(e) => setStatus(e.target.value as any)}>
+            <select
+              className="w-full h-10 border rounded px-3"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as Status)}
+            >
               <option value="active">active</option>
               <option value="inactive">inactive</option>
               <option value="draft">draft</option>
@@ -219,12 +247,18 @@ export default function NewProductPage() {
 
           <div className="md:col-span-2">
             <Label className="m-2">Description</Label>
-            <Textarea rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Product description" />
+            <Textarea
+              rows={3}
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              placeholder="Product description"
+            />
           </div>
 
+          {/* Attributes */}
           <div>
             <Label className="m-2">Category</Label>
-            <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Shoes" />
+            <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="T-Shirts" />
           </div>
           <div>
             <Label className="m-2">Supplier</Label>
@@ -236,10 +270,122 @@ export default function NewProductPage() {
           </div>
           <div>
             <Label className="m-2">Cost Price (£)</Label>
-            <Input type="number" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} placeholder="e.g., 45.00" />
+            <Input
+              type="number"
+              step="0.01"
+              value={wholesale}
+              onChange={(e) => setWholesale(e.target.value)}
+              placeholder="e.g., 7.50"
+            />
           </div>
         </section>
 
+        {/* ---------- Color input (adds a block) ---------- */}
+        <section className="border rounded p-4 space-y-3">
+          <Label className="m-2">Add Color</Label>
+          <div className="flex gap-2">
+            <Input
+              value={colorInput}
+              onChange={(e) => setColorInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (["Enter", "Tab", ","].includes(e.key)) {
+                  e.preventDefault();
+                  addColor(colorInput);
+                }
+              }}
+              onBlur={() => addColor(colorInput)}
+              placeholder="Type a color then Enter (e.g., BLACK)"
+              className="max-w-md"
+            />
+            <Button type="button" onClick={() => addColor(colorInput)}>
+              Add color
+            </Button>
+          </div>
+        </section>
+
+        {/* ---------- One section per color, with its own sizes ---------- */}
+        {blocks.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No colors yet. Add one above.</p>
+        ) : (
+          <div className="space-y-6">
+            {blocks.map((b) => (
+              <section key={b.id} className="border rounded p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs uppercase text-gray-500">Color</span>
+                    <Input
+                      value={b.color}
+                      onChange={(e) => updateColorLabel(b.id, e.target.value)}
+                      className="w-40"
+                    />
+                  </div>
+                  <Button type="button" variant="destructive" onClick={() => removeColor(b.id)}>
+                    Remove color
+                  </Button>
+                </div>
+
+                <div>
+                  <Label className="m-2">Add sizes for {b.color || "color"}</Label>
+                  <Input
+                    value={b.sizeInput}
+                    onChange={(e) =>
+                      setBlocks((prev) =>
+                        prev.map((x) => (x.id === b.id ? { ...x, sizeInput: e.target.value } : x))
+                      )
+                    }
+                    onKeyDown={(e) => onSizeKeyDown(e, b.id, b.sizeInput)}
+                    onPaste={(e) => onSizePaste(e, b.id)}
+                    onBlur={() => addSize(b.id, b.sizeInput)}
+                    placeholder="Type size then Enter (e.g., S). You can paste: S, M, L"
+                  />
+                </div>
+
+                {b.sizeRows.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm border rounded">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="text-left p-2 border">Size</th>
+                          <th className="text-left p-2 border">Quantity</th>
+                          <th className="p-2 border w-16">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {b.sizeRows.map((r) => (
+                          <tr key={r.size}>
+                            <td className="p-2 border">{r.size}</td>
+                            <td className="p-2 border">
+                              <Input
+                                type="number"
+                                inputMode="numeric"
+                                min={0}
+                                step={1}
+                                value={String(r.quantity)}
+                                onChange={(e) => updateSizeQty(b.id, r.size, toInt(e.target.value))}
+                              />
+                            </td>
+                            <td className="p-2 border text-center">
+                              <button
+                                type="button"
+                                className="text-red-600"
+                                onClick={() => removeSize(b.id, r.size)}
+                                aria-label={`Remove size ${r.size}`}
+                              >
+                                ×
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            ))}
+          </div>
+        )}
+
+        {/* ---------- Submit ---------- */}
         <div className="flex gap-2">
           <Button className="bg-green-600" type="submit" disabled={saving}>
             {saving ? "Saving…" : "Create product"}

@@ -6,7 +6,7 @@ import {
   updateProduct,
   setProductStatus,
   deleteProduct,
-  listSizesForProduct,   // <-- new
+  listSizesForProduct,
 } from "../controllers/product.controller";
 
 const router = Router();
@@ -15,8 +15,8 @@ const router = Router();
 router.get("/", listProducts);
 router.post("/", createProduct);
 
-// Item-specific helpers (put this BEFORE "/:id")
-router.get("/:id/sizes", listSizesForProduct); // <-- IMPORTANT: before the next line
+// Item helpers (keep before "/:id")
+router.get("/:id/sizes", listSizesForProduct);
 
 // Item CRUD
 router.get("/:id", getProduct);

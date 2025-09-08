@@ -3,12 +3,13 @@ import { Schema, model, Document, Types } from "mongoose";
 export type ProductStatus = "active" | "inactive" | "draft" | "archived";
 
 export interface ProductDoc extends Document {
-  styleNumber: string;      // same for all sizes in the style
+  styleNumber: string;      // same for all variants in a style
   title: string;
   description?: string;
-  price: Number;            // minor units (pence)
+  price: number;            // minor units (pence)
+  color: string;            // one color per document  👈 NEW
   size: string;             // one size per document
-  quantity: number
+  quantity: number;         // stock for this color+size
   attributes?: Record<string, any>;
   status: ProductStatus;
   isDeleted: boolean;
@@ -18,12 +19,17 @@ export interface ProductDoc extends Document {
 
 const ProductSchema = new Schema<ProductDoc>(
   {
-    styleNumber: { type: String, required: true, index: true, trim: true },
+    styleNumber: { type: String, required: true, index: true, trim: true, uppercase: true },
     title:       { type: String, required: true, index: true, trim: true },
     description: { type: String },
     price:       { type: Number, required: true, min: 0 },
-    size:        { type: String, required: true, trim: true, index: true },
-    quantity : {type:Number, required:true},
+
+    // NEW FIELD
+    color:       { type: String, required: true, trim: true, uppercase: true, index: true },
+
+    size:        { type: String, required: true, trim: true, uppercase: true, index: true },
+    quantity:    { type: Number, required: true, min: 0 },
+
     attributes:  { type: Schema.Types.Mixed },
     status:      { type: String, enum: ["active","inactive","draft","archived"], default: "draft", index: true },
     isDeleted:   { type: Boolean, default: false, index: true },
@@ -33,8 +39,10 @@ const ProductSchema = new Schema<ProductDoc>(
   { timestamps: true }
 );
 
+// text search on title/description
 ProductSchema.index({ title: "text", description: "text" });
-// ensure one row per (styleNumber, size)
-ProductSchema.index({ styleNumber: 1, size: 1 }, { unique: true });
+
+// unique row per (styleNumber, color, size)
+ProductSchema.index({ styleNumber: 1, color: 1, size: 1 }, { unique: true });
 
 export default model<ProductDoc>("Product", ProductSchema);

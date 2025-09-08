@@ -12,7 +12,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Edit2, Plus, Trash2, ViewIcon } from "lucide-react"; // 👈 import Trash2
+import { Eye as ViewIcon, Plus, Trash2 } from "lucide-react"; // 👈 use Eye as ViewIcon
 import api from "@/lib/api";
 import { Input } from "@/components/ui/input";
 
@@ -21,6 +21,7 @@ type ProductRow = {
   _id: string;
   styleNumber: string;
   title: string;
+  color?: string;       // 👈 shows in the table
   size: string;
   quantity?: number;
   status:
@@ -32,7 +33,7 @@ type ProductRow = {
     | "Inactive"
     | "Draft"
     | "Archived";
-  price: number; // minor units (pence)
+  price: number;        // minor units (pence)
   updatedAt?: string;
 };
 
@@ -45,20 +46,17 @@ type ListResponse = {
 
 const ITEMS_PER_PAGE = 15;
 
+/* ---------- helpers ---------- */
 function formatMinorGBP(pence?: number) {
   if (typeof pence !== "number") return "—";
-  return new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-  }).format(pence / 100);
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(
+    pence / 100
+  );
 }
-
 function prettyStatus(s: string) {
   const v = s.toLowerCase();
   return v.charAt(0).toUpperCase() + v.slice(1);
 }
-
-/** Highlight matched text inside a cell */
 function highlight(text: string, q: string) {
   if (!q) return text;
   const i = text.toLowerCase().indexOf(q.toLowerCase());
@@ -72,6 +70,73 @@ function highlight(text: string, q: string) {
   );
 }
 
+// Minimal allow-list of CSS color names (add more if you like)
+const CSS_COLOR_NAMES = new Set(
+  [
+    "black","white","red","green","blue","navy","maroon","silver","gray","grey","yellow","olive",
+    "purple","teal","aqua","orange","pink","brown","beige","gold","tan","khaki","cyan","magenta",
+    "violet","indigo","lavender","coral","salmon","crimson","turquoise","mint","peach"
+  ]
+);
+
+// validate hex like #abc or #aabbcc (with or without #)
+function isHexColor(str: string) {
+  return /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.test(str.trim());
+}
+function normalizeHex(str: string) {
+  const t = str.trim();
+  return t.startsWith("#") ? t : `#${t}`;
+}
+function safeCssColor(color?: string | null) {
+  if (!color) return null;
+  const t = String(color).trim();
+  if (!t) return null;
+  if (isHexColor(t)) return normalizeHex(t);
+  const low = t.toLowerCase();
+  if (CSS_COLOR_NAMES.has(low)) return low;
+  return null;
+}
+
+/** Status badge with colored dot & background */
+function StatusBadge({ status }: { status: string }) {
+  const v = String(status).toLowerCase();
+  let bg = "bg-gray-100 text-gray-800";
+  let dot = "bg-gray-400";
+  if (v === "active") {
+    bg = "bg-green-100 text-green-800";
+    dot = "bg-green-500";
+  } else if (v === "inactive") {
+    bg = "bg-red-100 text-red-800";
+    dot = "bg-red-500";
+  } else if (v === "draft") {
+    bg = "bg-yellow-100 text-yellow-800";
+    dot = "bg-yellow-500";
+  } else if (v === "archived") {
+    bg = "bg-zinc-100 text-zinc-700";
+    dot = "bg-zinc-400";
+  }
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${bg}`}>
+      <span className={`h-2 w-2 rounded-full mr-1.5 ${dot}`} />
+      {prettyStatus(v)}
+    </span>
+  );
+}
+
+/** Color pill + swatch dot (falls back gracefully if no color) */
+function ColorCell({ color, q }: { color?: string; q: string }) {
+  const css = safeCssColor(color);
+  const label = color || "—";
+  return (
+    <div className="flex items-center gap-2">
+      {css ? <span className="h-3 w-3 rounded-full border" style={{ backgroundColor: css }} /> : <span className="h-3 w-3 rounded-full border bg-gray-200" />}
+      <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs bg-gray-50">
+        {highlight(label, q)}
+      </span>
+    </div>
+  );
+}
+
 export default function ProductsPage() {
   const router = useRouter();
 
@@ -80,7 +145,7 @@ export default function ProductsPage() {
   const [page, setPage] = useState(0); // 0-based for UI
   const [total, setTotal] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
-  const [deletingId, setDeletingId] = useState<string | null>(null); // 👈 new
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchPage = useCallback(async (uiPage: number) => {
     setLoading(true);
@@ -88,8 +153,23 @@ export default function ProductsPage() {
       const { data } = await api.get<ListResponse>(
         `/api/products?page=${uiPage + 1}&limit=${ITEMS_PER_PAGE}`
       );
-      setRows(data.rows ?? []);
-      setTotal(data.total ?? 0);
+
+      // Some older rows might not have `color`; try to derive from attributes if the API still returns it there.
+      const raw: any[] = (data as any)?.rows ?? [];
+      const normalized: ProductRow[] = raw.map((r: any) => ({
+        ...r,
+        // prefer top-level color; fallback to common attribute keys
+        color:
+          r.color ??
+          r?.attributes?.color ??
+          r?.attributes?.Color ??
+          r?.attributes?.colour ??
+          r?.attributes?.COLOUR ??
+          undefined,
+      }));
+
+      setRows(normalized);
+      setTotal(data.total ?? normalized.length ?? 0);
     } catch (err) {
       console.error("Error fetching products:", err);
       setRows([]);
@@ -108,6 +188,7 @@ export default function ProductsPage() {
     [total]
   );
 
+  // Filter now includes color
   const filtered = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     if (!q) return rows;
@@ -116,6 +197,7 @@ export default function ProductsPage() {
       return (
         r.title.toLowerCase().includes(q) ||
         r.styleNumber.toLowerCase().includes(q) ||
+        (r.color ?? "").toLowerCase().includes(q) ||
         (r.size ?? "").toLowerCase().includes(q) ||
         (r.status ?? "").toString().toLowerCase().includes(q) ||
         qty.includes(q)
@@ -128,7 +210,6 @@ export default function ProductsPage() {
     try {
       setDeletingId(id);
       await api.delete(`/api/products/${id}`); // 204 on success
-      // Refresh the current page from server to keep pagination/total correct
       await fetchPage(page);
     } catch (err: any) {
       alert(err?.response?.data?.message || "Failed to delete product.");
@@ -149,8 +230,8 @@ export default function ProductsPage() {
           <Input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search Title, Style, Size, Status, Qty"
-            className="w-72"
+            placeholder="Search Title, Style, Color, Size, Status, Qty"
+            className="w-80"
           />
           <Button
             className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all"
@@ -171,6 +252,7 @@ export default function ProductsPage() {
             <TableRow className="bg-gray-100">
               <TableHead className="font-semibold">Style No.</TableHead>
               <TableHead className="font-semibold">Title</TableHead>
+              <TableHead className="font-semibold">Color</TableHead>
               <TableHead className="font-semibold">Size</TableHead>
               <TableHead className="font-semibold">Qty</TableHead>
               <TableHead className="font-semibold">Status</TableHead>
@@ -183,7 +265,7 @@ export default function ProductsPage() {
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-sm text-gray-500">
+                <TableCell colSpan={9} className="text-sm text-gray-500">
                   {searchTerm ? <>No matches for “{searchTerm}”.</> : <>No products found.</>}
                 </TableCell>
               </TableRow>
@@ -197,28 +279,38 @@ export default function ProductsPage() {
                   </TableCell>
 
                   <TableCell>{highlight(p.title, searchTerm)}</TableCell>
+
+                  {/* Color cell */}
+                  <TableCell>
+                    <ColorCell color={p.color} q={searchTerm} />
+                  </TableCell>
+
                   <TableCell>{highlight(p.size ?? "", searchTerm)}</TableCell>
                   <TableCell className="tabular-nums">{p.quantity ?? 0}</TableCell>
-                  <TableCell>{prettyStatus(String(p.status))}</TableCell>
+
+                  <TableCell>
+                    <StatusBadge status={String(p.status)} />
+                  </TableCell>
+
                   <TableCell>{formatMinorGBP(p.price)}</TableCell>
                   <TableCell>
                     {p.updatedAt ? new Date(p.updatedAt).toLocaleString("en-GB") : "—"}
                   </TableCell>
 
                   <TableCell>
-                    <div className="flex flex-wrap gap-2">
-                      <Link href={`/Products/${p._id}`} className="text-indigo-600 hover:underline">
-                        <ViewIcon  className="h-4"/>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <Link href={`/Products/${p._id}`} className="text-indigo-600 hover:underline inline-flex items-center gap-1">
+                        <ViewIcon className="h-4 w-4" />
+                        View
                       </Link>
                       <span className="opacity-30">|</span>
-                      
-                      {/* 👇 Real delete action */}
-                      <button className="text-red-500"
+                      <button
+                        className="text-red-500 inline-flex items-center gap-1"
                         onClick={() => handleDelete(p._id)}
                         aria-label="Delete product"
                       >
-                        <Trash2 className="h-4"/>
-                        {deletingId === p._id ? "Deleting…" : ""}
+                        <Trash2 className="h-4 w-4" />
+                        {deletingId === p._id ? "Deleting…" : "Delete"}
                       </button>
                     </div>
                   </TableCell>
