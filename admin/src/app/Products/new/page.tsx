@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import api from "@/lib/api";
@@ -25,6 +25,9 @@ function toMinor(pounds: string | number) {
 }
 const uid = () => Math.random().toString(36).slice(2, 9);
 
+// Even sizes 0..32
+const EVEN_SIZES = Array.from({ length: 17 }, (_, i) => String(i * 2));
+
 export default function NewProductPage() {
   const router = useRouter();
 
@@ -45,30 +48,70 @@ export default function NewProductPage() {
   const [colorInput, setColorInput] = useState("");
   const [blocks, setBlocks] = useState<ColorBlock[]>([]);
 
+  // multi-select size picker state (for the add-colors action)
+  const [selectedSizes, setSelectedSizes] = useState<string[]>([]); // can be empty until user picks
+  const [sizePickerOpen, setSizePickerOpen] = useState(false);
+  const sizePickerRef = useRef<HTMLDivElement | null>(null);
+
   const [saving, setSaving] = useState(false);
 
-  // ---- color block helpers ----
-  function addColor(raw: string) {
-    const color = norm(raw);
-    if (!color) return;
-    // avoid duplicate color blocks
-    if (blocks.some((b) => b.color === color)) {
-      setColorInput("");
+  // --- utils ---
+  const tokenize = (raw: string) =>
+    [...new Set(raw.split(/[, \s]+/g).map(norm).filter(Boolean))];
+
+  const toggleSize = (s: string) =>
+    setSelectedSizes((prev) =>
+      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
+    );
+
+  // Click outside to close size dropdown
+  React.useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (!sizePickerRef.current) return;
+      if (!sizePickerRef.current.contains(e.target as Node)) {
+        setSizePickerOpen(false);
+      }
+    }
+    if (sizePickerOpen) document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [sizePickerOpen]);
+
+  // Add multiple colors at once + add all selected sizes to each color
+  function addColorsWithSizes(rawColors: string, sizesToAdd: string[]) {
+    const tokens = tokenize(rawColors);
+    if (!tokens.length) return;
+    if (!sizesToAdd.length) {
+      alert("Please select at least one size from the size dropdown.");
       return;
     }
-    setBlocks((prev) => [...prev, { id: uid(), color, sizeInput: "", sizeRows: [] }]);
+    const sizes = sizesToAdd.map(norm);
+
+    setBlocks((prev) => {
+      let next = [...prev];
+      for (const color of tokens) {
+        const idx = next.findIndex((b) => b.color === color);
+        if (idx === -1) {
+          // add new color block with all selected sizes
+          next.push({
+            id: uid(),
+            color,
+            sizeInput: "",
+            sizeRows: sizes.map((s) => ({ size: s, quantity: 0 })),
+          });
+        } else {
+          // merge sizes into existing block (dedupe)
+          const b = next[idx];
+          const current = new Set(b.sizeRows.map((r) => r.size));
+          const toAppend = sizes.filter((s) => !current.has(s)).map((s) => ({ size: s, quantity: 0 }));
+          if (toAppend.length) {
+            next[idx] = { ...b, sizeRows: [...b.sizeRows, ...toAppend] };
+          }
+        }
+      }
+      return next;
+    });
+
     setColorInput("");
-  }
-
-  function removeColor(id: string) {
-    setBlocks((prev) => prev.filter((b) => b.id !== id));
-  }
-
-  function updateColorLabel(id: string, raw: string) {
-    const color = norm(raw);
-    setBlocks((prev) =>
-      prev.map((b) => (b.id === id ? { ...b, color } : b))
-    );
   }
 
   // ---- per-block size helpers ----
@@ -85,6 +128,17 @@ export default function NewProductPage() {
           sizeRows: [...b.sizeRows, { size, quantity: 0 }],
         };
       })
+    );
+  }
+
+  function removeColor(id: string) {
+    setBlocks((prev) => prev.filter((b) => b.id !== id));
+  }
+
+  function updateColorLabel(id: string, raw: string) {
+    const color = norm(raw);
+    setBlocks((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, color } : b))
     );
   }
 
@@ -113,7 +167,6 @@ export default function NewProductPage() {
     );
   }
 
-  // ---- paste / key handlers ----
   function onSizeKeyDown(
     e: React.KeyboardEvent<HTMLInputElement>,
     blockId: string,
@@ -127,7 +180,7 @@ export default function NewProductPage() {
 
   function onSizePaste(e: React.ClipboardEvent<HTMLInputElement>, blockId: string) {
     const text = e.clipboardData.getData("text");
-    const tokens = [...new Set(text.split(/[, \s]+/g).map(norm).filter(Boolean))];
+    const tokens = tokenize(text);
     if (!tokens.length) return;
     e.preventDefault();
     tokens.forEach((t) => addSize(blockId, t));
@@ -164,7 +217,7 @@ export default function NewProductPage() {
         title: name,
         description: desc.trim() || undefined,
         price: priceMinor,
-        items, // <-- [{ color, size, quantity }]
+        items, // [{ color, size, quantity }]
         attributes: {
           category: category || undefined,
           supplier: supplier || undefined,
@@ -280,32 +333,84 @@ export default function NewProductPage() {
           </div>
         </section>
 
-        {/* ---------- Color input (adds a block) ---------- */}
+        {/* ---------- Add multiple colors + multi-select sizes ---------- */}
         <section className="border rounded p-4 space-y-3">
-          <Label className="m-2">Add Color</Label>
-          <div className="flex gap-2">
+          <Label className="m-2">Add Color(s) & Sizes</Label>
+          <div className="flex flex-col md:flex-row gap-2 md:items-center">
+            {/* Colors input (multi) */}
             <Input
               value={colorInput}
               onChange={(e) => setColorInput(e.target.value)}
               onKeyDown={(e) => {
                 if (["Enter", "Tab", ","].includes(e.key)) {
                   e.preventDefault();
-                  addColor(colorInput);
+                  addColorsWithSizes(colorInput, selectedSizes);
                 }
               }}
-              onBlur={() => addColor(colorInput)}
-              placeholder="Type a color then Enter (e.g., BLACK)"
-              className="max-w-md"
+              placeholder="Type one or many colors, separated by commas (e.g., BLACK, NAVY, KHAKI)"
+              className="md:max-w-xl"
             />
-            <Button type="button" onClick={() => addColor(colorInput)}>
-              Add color
+
+            {/* Multi-select sizes (custom dropdown) */}
+            <div className="relative" ref={sizePickerRef}>
+              <button
+                type="button"
+                className="h-10 rounded border px-3 bg-white hover:bg-gray-50 transition"
+                onClick={() => setSizePickerOpen((o) => !o)}
+                aria-haspopup="listbox"
+                aria-expanded={sizePickerOpen}
+              >
+                {selectedSizes.length
+                  ? `Sizes: ${selectedSizes.join(", ")}`
+                  : "Select sizes (even 0–32)"}
+              </button>
+
+              {sizePickerOpen && (
+                <div className="absolute z-20 mt-1 w-56 rounded border bg-white p-2 shadow">
+                  <div className="max-h-60 overflow-auto">
+                    {EVEN_SIZES.map((s) => (
+                      <label
+                        key={s}
+                        className="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedSizes.includes(s)}
+                          onChange={() => toggleSize(s)}
+                        />
+                        <span>{s}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex justify-between gap-2 pt-2 border-t mt-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setSelectedSizes([])}
+                    >
+                      Clear
+                    </Button>
+                    <Button type="button" onClick={() => setSizePickerOpen(false)}>
+                      Done
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <Button type="button" onClick={() => addColorsWithSizes(colorInput, selectedSizes)}>
+              Add color(s)
             </Button>
           </div>
+          <p className="text-xs text-gray-500">
+            Tip: Paste a list like <code>Black, Navy, Olive</code>. Select multiple sizes, then
+            click <em>Add color(s)</em>; each color will be created with those sizes.
+          </p>
         </section>
 
         {/* ---------- One section per color, with its own sizes ---------- */}
         {blocks.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No colors yet. Add one above.</p>
+          <p className="text-sm text-muted-foreground">No colors yet. Add some above.</p>
         ) : (
           <div className="space-y-6">
             {blocks.map((b) => (
@@ -319,8 +424,8 @@ export default function NewProductPage() {
                       className="w-40"
                     />
                   </div>
-                  <Button type="button" variant="destructive" onClick={() => removeColor(b.id)}>
-                    Remove color
+                  <Button type="button" variant="ghost" onClick={() => removeColor(b.id)}>
+                    X
                   </Button>
                 </div>
 
@@ -335,7 +440,9 @@ export default function NewProductPage() {
                     }
                     onKeyDown={(e) => onSizeKeyDown(e, b.id, b.sizeInput)}
                     onPaste={(e) => onSizePaste(e, b.id)}
-                    onBlur={() => addSize(b.id, b.sizeInput)}
+                    onBlur={() => {
+                      if (b.sizeInput.trim()) addSize(b.id, b.sizeInput);
+                    }}
                     placeholder="Type size then Enter (e.g., S). You can paste: S, M, L"
                   />
                 </div>
@@ -352,7 +459,7 @@ export default function NewProductPage() {
                       </thead>
                       <tbody>
                         {b.sizeRows.map((r) => (
-                          <tr key={r.size}>
+                          <tr key={`${b.id}-${r.size}`}>
                             <td className="p-2 border">{r.size}</td>
                             <td className="p-2 border">
                               <Input
