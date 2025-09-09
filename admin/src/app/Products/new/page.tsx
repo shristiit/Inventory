@@ -25,6 +25,8 @@ function toMinor(pounds: string | number) {
 }
 const uid = () => Math.random().toString(36).slice(2, 9);
 
+
+
 // Even sizes 0..32
 const EVEN_SIZES = Array.from({ length: 17 }, (_, i) => String(i * 2));
 
@@ -49,15 +51,16 @@ export default function NewProductPage() {
   const [blocks, setBlocks] = useState<ColorBlock[]>([]);
 
   // multi-select size picker state (for the add-colors action)
-  const [selectedSizes, setSelectedSizes] = useState<string[]>([]); // can be empty until user picks
+  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [sizePickerOpen, setSizePickerOpen] = useState(false);
   const sizePickerRef = useRef<HTMLDivElement | null>(null);
 
   const [saving, setSaving] = useState(false);
 
   // --- utils ---
+  // split on comma, slash, or any whitespace; trim & dedupe
   const tokenize = (raw: string) =>
-    [...new Set(raw.split(/[, \s]+/g).map(norm).filter(Boolean))];
+    [...new Set(raw.split(/[,\s/]+/g).map(norm).filter(Boolean))];
 
   const toggleSize = (s: string) =>
     setSelectedSizes((prev) =>
@@ -102,7 +105,9 @@ export default function NewProductPage() {
           // merge sizes into existing block (dedupe)
           const b = next[idx];
           const current = new Set(b.sizeRows.map((r) => r.size));
-          const toAppend = sizes.filter((s) => !current.has(s)).map((s) => ({ size: s, quantity: 0 }));
+          const toAppend = sizes
+            .filter((s) => !current.has(s))
+            .map((s) => ({ size: s, quantity: 0 }));
           if (toAppend.length) {
             next[idx] = { ...b, sizeRows: [...b.sizeRows, ...toAppend] };
           }
@@ -113,6 +118,108 @@ export default function NewProductPage() {
 
     setColorInput("");
   }
+// ----- size sorting + flat view helpers -----
+const ALPHA_SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL"];
+
+function sizeSortKey(label: string): [number, number | string] {
+  const v = norm(label);
+  if (/^\d+(\.\d+)?$/.test(v)) return [0, parseFloat(v)]; // numeric sizes first (asc)
+  const idx = ALPHA_SIZES.indexOf(v);
+  if (idx !== -1) return [1, idx];                        // then XXS..XXXL in this order
+  return [2, v];                                          // then any custom labels (A→Z)
+}
+
+function sizeCompare(a: string, b: string) {
+  const ka = sizeSortKey(a);
+  const kb = sizeSortKey(b);
+  if (ka[0] !== kb[0]) return ka[0] - kb[0];
+  if (typeof ka[1] === "number" && typeof kb[1] === "number") {
+    return (ka[1] as number) - (kb[1] as number);
+  }
+  return String(ka[1]).localeCompare(String(kb[1]));
+}
+
+// Flatten blocks -> rows (keeps color order as added, sorts sizes asc within each color)
+const flatRows = React.useMemo(
+  () =>
+    blocks.flatMap((b) =>
+      [...b.sizeRows]
+        .sort((a, z) => sizeCompare(a.size, z.size))
+        .map((r) => ({
+          colorBlockId: b.id,
+          color: b.color,
+          size: r.size,
+          quantity: r.quantity,
+        }))
+    ),
+  [blocks]
+);
+
+// Update just one cell's quantity
+function updateQtyFlat(colorBlockId: string, size: string, qty: number) {
+  setBlocks((prev) =>
+    prev.map((b) => {
+      if (b.id !== colorBlockId) return b;
+      const idx = b.sizeRows.findIndex((r) => r.size === size);
+      if (idx === -1) {
+        return { ...b, sizeRows: [...b.sizeRows, { size, quantity: qty }] };
+      }
+      const next = [...b.sizeRows];
+      next[idx] = { ...next[idx], quantity: qty };
+      return { ...b, sizeRows: next };
+    })
+  );
+}
+
+// Remove one (color, size) row
+function removeFlatRow(colorBlockId: string, size: string) {
+  setBlocks((prev) =>
+    prev
+      .map((b) =>
+        b.id === colorBlockId
+          ? { ...b, sizeRows: b.sizeRows.filter((r) => r.size !== size) }
+          : b
+      )
+      // (optional) auto-remove empty color block
+      .filter((b) => b.sizeRows.length > 0 || b.id !== colorBlockId)
+  );
+}
+
+// union of all sizes across colors, sorted ascending
+const allSizes = React.useMemo(() => {
+  const set = new Set<string>();
+  blocks.forEach((b) => b.sizeRows.forEach((r) => set.add(r.size)));
+  return Array.from(set).sort((a, b) => {
+    const ka = sizeSortKey(a);
+    const kb = sizeSortKey(b);
+    if (ka[0] !== kb[0]) return ka[0] - kb[0];
+    if (typeof ka[1] === "number" && typeof kb[1] === "number") {
+      return (ka[1] as number) - (kb[1] as number);
+    }
+    return String(ka[1]).localeCompare(String(kb[1]));
+  });
+}, [blocks]);
+
+function getQty(block: ColorBlock, size: string) {
+  const r = block.sizeRows.find((x) => x.size === size);
+  return r ? r.quantity : 0;
+}
+
+// upsert quantity for a (color, size) cell
+function upsertQty(blockId: string, size: string, qty: number) {
+  setBlocks((prev) =>
+    prev.map((b) => {
+      if (b.id !== blockId) return b;
+      const idx = b.sizeRows.findIndex((r) => r.size === size);
+      if (idx === -1) {
+        return { ...b, sizeRows: [...b.sizeRows, { size, quantity: qty }] };
+      }
+      const next = [...b.sizeRows];
+      next[idx] = { ...next[idx], quantity: qty };
+      return { ...b, sizeRows: next };
+    })
+  );
+}
 
   // ---- per-block size helpers ----
   function addSize(blockId: string, raw: string) {
@@ -342,12 +449,19 @@ export default function NewProductPage() {
               value={colorInput}
               onChange={(e) => setColorInput(e.target.value)}
               onKeyDown={(e) => {
-                if (["Enter", "Tab", ","].includes(e.key)) {
+                // Enter, Tab, comma, or slash triggers batch-add
+                if (["Enter"].includes(e.key)) {
                   e.preventDefault();
                   addColorsWithSizes(colorInput, selectedSizes);
                 }
               }}
-              placeholder="Type one or many colors, separated by commas (e.g., BLACK, NAVY, KHAKI)"
+              onBlur={() => {
+                // Optional: add on blur if user typed delimiters; otherwise ignore
+                if (/[,\s/]/.test(colorInput)) {
+                  addColorsWithSizes(colorInput, selectedSizes);
+                }
+              }}
+              placeholder="Type colors separated by ',', '/' or spaces (e.g., BLACK, NAVY/OLIVE)"
               className="md:max-w-xl"
             />
 
@@ -403,94 +517,134 @@ export default function NewProductPage() {
             </Button>
           </div>
           <p className="text-xs text-gray-500">
-            Tip: Paste a list like <code>Black, Navy, Olive</code>. Select multiple sizes, then
-            click <em>Add color(s)</em>; each color will be created with those sizes.
+            Example: <code>Black, Navy/Olive  </code> → adds <em>Black</em>, <em>Navy</em>, and <em>Olive</em>.
           </p>
         </section>
 
-        {/* ---------- One section per color, with its own sizes ---------- */}
-        {blocks.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No colors yet. Add some above.</p>
-        ) : (
-          <div className="space-y-6">
-            {blocks.map((b) => (
-              <section key={b.id} className="border rounded p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs uppercase text-gray-500">Color</span>
-                    <Input
-                      value={b.color}
-                      onChange={(e) => updateColorLabel(b.id, e.target.value)}
-                      className="w-40"
-                    />
-                  </div>
-                  <Button type="button" variant="ghost" onClick={() => removeColor(b.id)}>
-                    X
-                  </Button>
-                </div>
 
-                <div>
-                  <Label className="m-2">Add sizes for {b.color || "color"}</Label>
-                  <Input
-                    value={b.sizeInput}
-                    onChange={(e) =>
-                      setBlocks((prev) =>
-                        prev.map((x) => (x.id === b.id ? { ...x, sizeInput: e.target.value } : x))
-                      )
-                    }
-                    onKeyDown={(e) => onSizeKeyDown(e, b.id, b.sizeInput)}
-                    onPaste={(e) => onSizePaste(e, b.id)}
-                    onBlur={() => {
-                      if (b.sizeInput.trim()) addSize(b.id, b.sizeInput);
-                    }}
-                    placeholder="Type size then Enter (e.g., S). You can paste: S, M, L"
-                  />
-                </div>
+        {/*view 1 */}
 
-                {b.sizeRows.length > 0 && (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm border rounded">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="text-left p-2 border">Size</th>
-                          <th className="text-left p-2 border">Quantity</th>
-                          <th className="p-2 border w-16">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {b.sizeRows.map((r) => (
-                          <tr key={`${b.id}-${r.size}`}>
-                            <td className="p-2 border">{r.size}</td>
-                            <td className="p-2 border">
-                              <Input
-                                type="number"
-                                inputMode="numeric"
-                                min={0}
-                                step={1}
-                                value={String(r.quantity)}
-                                onChange={(e) => updateSizeQty(b.id, r.size, toInt(e.target.value))}
-                              />
-                            </td>
-                            <td className="p-2 border text-center">
-                              <button
-                                type="button"
-                                className="text-red-600"
-                                onClick={() => removeSize(b.id, r.size)}
-                                aria-label={`Remove size ${r.size}`}
-                              >
-                                ×
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </section>
+       {/* ---------- Colors × Sizes matrix (chronological rows, ascending size columns) ---------- */}
+<section className="border rounded p-4 space-y-3">
+  <div className="flex items-center justify-between">
+    <h2 className="font-medium">Colors &amp; Sizes</h2>
+    {blocks.length > 0 && allSizes.length === 0 && (
+      <span className="text-xs text-gray-500">No sizes yet — add sizes via the controls above.</span>
+    )}
+  </div>
+
+  {blocks.length === 0 ? (
+    <p className="text-sm text-muted-foreground">No colors yet. Add some above.</p>
+  ) : (
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-sm border rounded">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="text-left p-2 border w-48">Color</th>
+            {allSizes.map((s) => (
+              <th key={s} className="text-center p-2 border">{s}</th>
             ))}
-          </div>
-        )}
+            <th className="text-center p-2 border w-16">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {blocks.map((b) => (
+            <tr key={b.id}>
+              {/* Color (editable) */}
+              <td className="p-2 border align-middle">
+                <Input
+                  value={b.color}
+                  onChange={(e) => updateColorLabel(b.id, e.target.value)}
+                  className="w-40"
+                />
+              </td>
+
+              {/* One editable cell per size (inline quantity inputs) */}
+              {allSizes.map((s) => (
+                <td key={s} className="p-2 border text-center align-middle">
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={1}
+                    value={String(getQty(b, s))}
+                    onChange={(e) => upsertQty(b.id, s, toInt(e.target.value))}
+                    className="w-20 mx-auto"
+                  />
+                </td>
+              ))}
+
+              {/* Remove color */}
+              <td className="p-2 border text-center align-middle">
+                <button
+                  type="button"
+                  className="text-red-600"
+                  onClick={() => removeColor(b.id)}
+                  aria-label={`Remove color ${b.color}`}
+                >
+                  ×
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</section>
+
+{/*view 2 */}
+{/* ---------- Flat table: one row per (color, size) ---------- */}
+<section className="border rounded p-4 space-y-3">
+  <h2 className="font-medium">Variants</h2>
+
+  {blocks.length === 0 || flatRows.length === 0 ? (
+    <p className="text-sm text-muted-foreground">No rows yet. Add colors & sizes above.</p>
+  ) : (
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-sm border rounded">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="text-left p-2 border w-48">Color</th>
+            <th className="text-left p-2 border w-28">Size</th>
+            <th className="text-left p-2 border w-32">Quantity</th>
+            <th className="text-center p-2 border w-12">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {flatRows.map((row) => (
+            <tr key={`${row.colorBlockId}-${row.size}`}>
+              <td className="p-2 border align-middle">{row.color}</td>
+              <td className="p-2 border align-middle">{row.size}</td>
+              <td className="p-2 border align-middle">
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  step={1}
+                  className="w-24"
+                  value={String(row.quantity ?? 0)}
+                  onChange={(e) => updateQtyFlat(row.colorBlockId, row.size, toInt(e.target.value))}
+                />
+              </td>
+              <td className="p-2 border text-center align-middle">
+                <button
+                  type="button"
+                  className="text-red-600"
+                  aria-label={`Remove ${row.color} / ${row.size}`}
+                  onClick={() => removeFlatRow(row.colorBlockId, row.size)}
+                >
+                  ×
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</section>
+
 
         {/* ---------- Submit ---------- */}
         <div className="flex gap-2">

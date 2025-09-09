@@ -282,7 +282,7 @@ export default function ProductsPage() {
 
                   {/* Color cell */}
                   <TableCell>
-                    <ColorCell color={p.color} q={searchTerm} />
+                  {p.color} {searchTerm} 
                   </TableCell>
 
                   <TableCell>{highlight(p.size ?? "", searchTerm)}</TableCell>
