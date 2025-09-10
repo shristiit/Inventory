@@ -9,6 +9,7 @@ export interface InventoryByLocation {
 
 export interface SizeDoc extends Document {
   variantId: Types.ObjectId;
+  sizeMasterId?: Types.ObjectId; // optional reference to master size
   label: string;
   barcode: string;
   inventory: InventoryByLocation[];
@@ -36,6 +37,7 @@ const InventorySchema = new Schema<InventoryByLocation>(
 const SizeSchema = new Schema<SizeDoc>(
   {
     variantId: { type: Schema.Types.ObjectId, ref: 'Variant', required: true, index: true },
+    sizeMasterId: { type: Schema.Types.ObjectId, ref: 'SizeMaster' },
     label:     { type: String, required: true },
     barcode:   { type: String, required: true, unique: true, index: true },
     inventory: { type: [InventorySchema], default: [] },

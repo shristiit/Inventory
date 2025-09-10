@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-type Role = "admin" | "customer";
+type Role = "admin" | "staff" | "customer";
 
 export default function NewUserPage() {
   const router = useRouter();
@@ -65,11 +65,10 @@ export default function NewUserPage() {
       if (err.response?.status === 409) {
         setError("Username or email already exists.");
       } else {
-        const msg =
-          err.response?.data?.message ||
-          err.response?.data?.errors?.[0]?.msg ||
-          "Failed to create user.";
-        setError(msg);
+        const firstErr = err.response?.data?.errors?.[0];
+        const msg = err.response?.data?.message || firstErr?.msg || "Failed to create user.";
+        const field = firstErr?.path || firstErr?.param;
+        setError(field ? `${field}: ${msg}` : msg);
       }
     } finally {
       setSaving(false);
@@ -87,7 +86,14 @@ export default function NewUserPage() {
         <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label htmlFor="username" className="m-2">Username</Label>
-            <Input id="username" required value={form.username} onChange={(e) => update("username", e.target.value)} />
+            <Input
+              id="username"
+              required
+              minLength={3}
+              value={form.username}
+              onChange={(e) => update("username", e.target.value)}
+              title="Username must be at least 3 characters"
+            />
           </div>
           <div>
             <Label htmlFor="email" className="m-2">Email</Label>
@@ -102,6 +108,7 @@ export default function NewUserPage() {
               onChange={(e) => update("role", e.target.value as Role)}
             >
               <option value="customer">customer</option>
+              <option value="staff">staff</option>
               <option value="admin">admin</option>
             </select>
           </div>

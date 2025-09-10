@@ -181,7 +181,7 @@ export default function NewOrderPage() {
       }
 
       // Build simple products[] (name/price/quantity) and totalAmount (floats in GBP)
-      const productsPayload: Array<{ name: string; price: number; quantity: number, product_id: string }> = [];
+      const productsPayload: Array<{ name: string; price: number; quantity: number; product_id: string; variantId?: string; sizeId?: string; location?: string }> = [];
 
       for (const ln of lines) {
         const deep = deepCache[ln.productId];
@@ -206,6 +206,9 @@ export default function NewOrderPage() {
           price: Number(priceGBP.toFixed(2)),
           quantity: ln.quantity,
           product_id: deep._id,
+          variantId: variant._id,
+          sizeId: size._id,
+          location: ln.location || DEFAULT_LOCATION,
         });
       }
 

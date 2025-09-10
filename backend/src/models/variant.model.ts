@@ -10,6 +10,7 @@ export interface MediaItem {
 export interface VariantDoc extends Document {
   productId: Types.ObjectId;
   sku: string;             // unique per color
+  colorMasterId?: Types.ObjectId; // optional reference to master color
   color: {
     name: string;
     code?: string;         // hex like #FF00AA
@@ -25,10 +26,7 @@ const VariantSchema = new Schema<VariantDoc>(
   {
     productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true, index: true },
     sku:       { type: String, required: true },
-    color:     {
-      name: { type: String, required: true },
-      code: { type: String }
-    },
+    colorMasterId: { type: Schema.Types.ObjectId, ref: 'ColorMaster' },
     media:     [{
       url: { type: String, required: true },
       type:{ type: String, enum: ['image','video'], required: true },

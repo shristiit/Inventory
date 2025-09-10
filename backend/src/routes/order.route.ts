@@ -9,6 +9,8 @@ import {
   deleteOrderById,
   updateOrder
 } from "../controllers/order.controller";
+import { authGuard } from "../middlewares/authGaurd";
+import { roleAnyGuard, roleGuard } from "../middlewares/roleGaurd";
 
 const router = Router();
 
@@ -21,9 +23,15 @@ router.post(
     body("products.*.name").isString().notEmpty(),
     body("products.*.price").isFloat({ min: 0 }),
     body("products.*.quantity").isInt({ min: 1 }),
+    body("products.*.product_id").isString().notEmpty(),
+    body("products.*.variantId").optional().isString(),
+    body("products.*.sizeId").optional().isString(),
+    body("products.*.location").optional().isString(),
     body("totalAmount").isFloat({ min: 0 }),
     body("shippingAddress").optional().isString(),
   ],
+  authGuard,
+  roleAnyGuard('admin', 'staff'),
   createOrder
 );
 // update Order 
@@ -33,16 +41,17 @@ router.post(
     body("orderNumber").isString().notEmpty(),
     body("status").isString().notEmpty(),
   ],
+  authGuard,
+  roleGuard('admin'),
   updateOrder
 );
-// List Orders
-router.get("/list", listOrders);
+// List Orders (admin or staff)
+router.get("/list", authGuard, roleAnyGuard('admin', 'staff'), listOrders);
 
-// Get Order by ID
-router.get("/:id", [param("id").isString().notEmpty()], getOrderById);
+// Get Order by ID (admin or staff)
+router.get("/:id", [param("id").isString().notEmpty()], authGuard, roleAnyGuard('admin', 'staff'), getOrderById);
 
-// Delete Order
-router.delete("/:id", [param("id").isString().notEmpty()], deleteOrderById);
+// Delete Order (admin only)
+router.delete("/:id", [param("id").isString().notEmpty()], authGuard, roleGuard('admin'), deleteOrderById);
 
 export default router;
-

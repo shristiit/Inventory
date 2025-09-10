@@ -65,6 +65,7 @@ type ProductDeep = {
   status: ProductRow["status"];
   price: number; // minor units
   updatedAt?: string;
+  dressType?: string;
   variants?: VariantDeep[];
 };
 
@@ -82,6 +83,7 @@ type SizeLineItem = {
   totalStock: number;
   onOrder: number;
   freeToSell: number;
+  dressType?: string;
 };
 
 const ITEMS_PER_PAGE = 15;
@@ -120,6 +122,26 @@ export default function ProductsPage() {
   const [page, setPage] = useState(0); // 0-based for UI
   const [total, setTotal] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
+  const DRESS_TYPES: string[] = [
+    "Ball Gown",
+    "Bracelets",
+    "Bridal",
+    "Classic Prom",
+    "Cocktail",
+    "Curve Allure",
+    "Curve Classic",
+    "Curve Cocktail",
+    "Earrings",
+    "Evening Elegance",
+    "Headpieces",
+    "Jewellery",
+    "Necklace",
+    "Pageant",
+    "Premium",
+    "Red Carpet Glamour",
+    "Rings",
+  ];
+  const [dressFilter, setDressFilter] = useState<string>("");
 
   // Deep product cache (variants + sizes) per product
   const [deepMap, setDeepMap] = useState<Record<string, ProductDeep>>({});
@@ -239,6 +261,7 @@ export default function ProductsPage() {
             sku: v.sku,
             sizeLabel: s.label,
             priceMinor: p.price,
+            dressType: (deep as any)?.dressType || undefined,
             totalStock: n0(s.totalQuantity),
             onOrder: n0(s.onOrderTotal),
             freeToSell: n0(s.sellableQuantity),
@@ -252,15 +275,20 @@ export default function ProductsPage() {
   // ✅ Filter the list we actually render
   const filteredLines = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
-    if (!q) return sizeLineItems;
-    return sizeLineItems.filter((item) =>
+    const byText = !q
+      ? sizeLineItems
+      : sizeLineItems.filter((item) =>
       item.title.toLowerCase().includes(q) ||
       item.styleNumber.toLowerCase().includes(q) ||
       item.sku.toLowerCase().includes(q) ||
       item.sizeLabel.toLowerCase().includes(q) ||
       item.barcode.toLowerCase().includes(q)
     );
-  }, [sizeLineItems, searchTerm]);
+    const byDress = dressFilter
+      ? byText.filter((i) => (i.dressType || "").toLowerCase() === dressFilter.toLowerCase())
+      : byText;
+    return byDress;
+  }, [sizeLineItems, searchTerm, dressFilter]);
 
   if (loading)
     return <div className="p-6 text-lg font-medium">Loading products…</div>;
@@ -276,6 +304,16 @@ export default function ProductsPage() {
             placeholder="Search Product, Style, SKU, Size, Barcode"
             className="w-72"
           />
+          <select
+            className="h-10 border rounded px-3"
+            value={dressFilter}
+            onChange={(e) => setDressFilter(e.target.value)}
+          >
+            <option value="">All Dress Types</option>
+            {DRESS_TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
           <Button
             className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all"
             onClick={() => router.push("/Products/new")}
@@ -334,21 +372,14 @@ export default function ProductsPage() {
               filteredLines.map((li) => (
                 <TableRow key={`${li.productId}-${li.variantId}-${li.sizeId}`}>
                   <TableCell className="font-mono">
-                    <Link
-                      href={`/Products/${li.productId}`}
-                      className="text-indigo-600 hover:underline"
-                      title="Open product"
-                    >
+                    <span className="text-gray-900">
                       {highlight(li.barcode, searchTerm)}
-                    </Link>
+                    </span>
                   </TableCell>
                   <TableCell>
-                    <Link
-                      href={`/Products/${li.productId}`}
-                      className="text-indigo-600 hover:underline"
-                    >
+                    <span className="text-gray-900">
                       {highlight(li.title, searchTerm)}
-                    </Link>
+                    </span>
                   </TableCell>
                   <TableCell className="font-mono">
                     {highlight(li.styleNumber, searchTerm)}

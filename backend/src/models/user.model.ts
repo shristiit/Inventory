@@ -7,7 +7,7 @@ export interface IUser {
   username: string;
   email: string;
   password_hash: string;
-  role: 'admin' | 'customer';
+  role: 'admin' | 'staff' | 'customer';
 
   storenumber: number;
   storename?: string;
@@ -27,7 +27,7 @@ const UserSchema = new Schema<IUser>(
     username: { type: String, unique: true, lowercase: true, trim: true, required: true },
     email: { type: String, unique: true, lowercase: true, trim: true, required: true },
     password_hash: { type: String, required: true },
-    role: { type: String, enum: ['admin', 'customer'], default: 'customer' },
+    role: { type: String, enum: ['admin', 'staff', 'customer'], default: 'customer' },
 
    
     storenumber: { type: Number, required: true, min: 0 }, // set min/max if you need 5 digits

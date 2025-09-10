@@ -1,8 +1,18 @@
 import Size from '../models/size.model';
+import * as master from './master.service';
 
 export async function add(variantId: string, dto: any, adminId: any) {
+  let sizeMasterId = dto.sizeMasterId;
+  if (!sizeMasterId && dto?.label) {
+    try {
+      const sm = await master.upsertSize(dto.label);
+      sizeMasterId = sm?._id;
+    } catch {}
+  }
+
   return Size.create({
     variantId,
+    sizeMasterId,
     label: dto.label,
     barcode: dto.barcode,
     inventory: dto.inventory ?? [],
