@@ -75,8 +75,11 @@ function toAbsoluteAssetUrl(u?: string): string | undefined {
     new URL(u);
     return u;
   } catch {
+    // Prefer explicit ASSET base, then API base, then window origin
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
     const base =
       process.env.NEXT_PUBLIC_ASSET_BASE_URL ||
+      apiBase ||
       (typeof window !== "undefined" ? window.location.origin : "");
     if (!base) return u;
     if (u.startsWith("/")) return `${base}${u}`;

@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import * as ctrl from '../controllers/product.controller';
+import { authGuard } from '../middlewares/authGaurd';
+import { roleGuard, roleAnyGuard } from '../middlewares/roleGaurd';
 import { upload } from '../config/storage';
 
 const r = Router();
 
-// Create product + variants + sizes
-r.post('/', ctrl.createProductDeep);
+// Create product + variants + sizes (admin or staff)
+r.post('/', authGuard, roleAnyGuard('admin', 'staff'), ctrl.createProductDeep);
 
 // Public reads (LIST first)
 r.get('/', ctrl.listProducts);
@@ -14,24 +16,24 @@ r.get('/', ctrl.listProducts);
 r.get('/variants/by-sku/:sku', ctrl.getVariantBySku);
 r.get('/variants/:variantId', ctrl.getVariantDeep);
 
-// Variant CRUD
-r.post('/:id/variants', ctrl.addVariant);
-r.patch('/variants/:variantId', ctrl.updateVariant);
-r.delete('/variants/:variantId', ctrl.deleteVariantCascadeArchive);
+// Variant CRUD (admin only)
+r.post('/:id/variants', authGuard, roleGuard('admin'), ctrl.addVariant);
+r.patch('/variants/:variantId', authGuard, roleGuard('admin'), ctrl.updateVariant);
+r.delete('/variants/:variantId', authGuard, roleGuard('admin'), ctrl.deleteVariantCascadeArchive);
 
-// Sizes CRUD
-r.post('/variants/:variantId/sizes', ctrl.addSize);
-r.patch('/sizes/:sizeId', ctrl.updateSize);
-r.delete('/sizes/:sizeId', ctrl.deleteSizeArchive);
+// Sizes CRUD (admin only)
+r.post('/variants/:variantId/sizes', authGuard, roleGuard('admin'), ctrl.addSize);
+r.patch('/sizes/:sizeId', authGuard, roleGuard('admin'), ctrl.updateSize);
+r.delete('/sizes/:sizeId', authGuard, roleGuard('admin'), ctrl.deleteSizeArchive);
 
 // Product updates / status / deep read / delete (keep AFTER variant routes)
 r.get('/:id', ctrl.getProductDeep);
-r.patch('/:id', ctrl.updateProduct);
-r.post('/:id/status', ctrl.setProductStatus);
-r.delete('/:id', ctrl.deleteProductCascadeArchive);
+r.patch('/:id', authGuard, roleGuard('admin'), ctrl.updateProduct);
+r.post('/:id/status', authGuard, roleGuard('admin'), ctrl.setProductStatus);
+r.delete('/:id', authGuard, roleGuard('admin'), ctrl.deleteProductCascadeArchive);
 
-// Media upload for a variant
+// Media upload for a variant (admin or staff)
 // Accepts multipart/form-data with one or more files under field name 'files'
-r.post('/variants/:variantId/media', upload.array('files', 10), ctrl.addVariantMedia);
+r.post('/variants/:variantId/media', authGuard, roleAnyGuard('admin', 'staff'), upload.array('files', 10), ctrl.addVariantMedia);
 
 export default r;

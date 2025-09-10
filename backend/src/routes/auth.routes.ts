@@ -22,7 +22,10 @@ router.post(
     body('username').isString().trim().isLength({ min: 3 }).toLowerCase(),
     body('email').isEmail().normalizeEmail(),
     body('password').isString().isLength({ min: 6 }),
-    body('role').optional().isIn(['admin', 'customer']).withMessage('Role must be either "admin" or "customer"'),
+    body('role')
+      .optional()
+      .isIn(['admin', 'staff', 'customer'])
+      .withMessage('Role must be one of "admin", "staff", or "customer"'),
     // require storenumber; allow nested store.storenumber & tolerate old typo
     body(['storenumber', 'store.storenumber', 'storenymber', 'store.storenymber'])
       .custom((_, { req }) => {
@@ -64,7 +67,7 @@ router.patch(
     param('id').isMongoId(),
     body('username').optional().isString().trim().isLength({ min: 3 }).toLowerCase(),
     body('email').optional().isEmail().normalizeEmail(),
-    body('role').optional().isIn(['admin', 'customer']),
+    body('role').optional().isIn(['admin', 'staff', 'customer']),
     body('password').optional().isString().isLength({ min: 6 }),
     body('storenumber').optional().isInt({ min: 0 }).toInt(),
     body('storename').optional().isString().trim(),

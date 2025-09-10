@@ -9,10 +9,14 @@ export interface ProductDoc extends Document {
   price: number;            // base/list price (use cents to avoid float drift)
   // vatprice: number;         // VAT-inclusive price 
   attributes?: Record<string, any>; // brand, category, etc.
+  dressType?: string;
   status: ProductStatus;    // active/inactive for sales gating
   isDeleted: boolean;
   createdBy?: Types.ObjectId;
   updatedBy?: Types.ObjectId;
+  categoryId?: Types.ObjectId | null;
+  subcategoryId?: Types.ObjectId | null;
+  supplierId?: Types.ObjectId | null;
 }
 
 const ProductSchema = new Schema<ProductDoc>(
@@ -23,6 +27,10 @@ const ProductSchema = new Schema<ProductDoc>(
     price:       { type: Number, required: true, min: 0 },
     // vatprice:    { type: Number, required: true, min: 0 },
     attributes:  { type: Schema.Types.Mixed },
+    dressType:   { type: String },
+    categoryId:  { type: Schema.Types.ObjectId, ref: 'Master', default: null, index: true },
+    subcategoryId:{ type: Schema.Types.ObjectId, ref: 'Master', default: null, index: true },
+    supplierId:  { type: Schema.Types.ObjectId, ref: 'Master', default: null, index: true },
     status:      { type: String, enum: ['active','inactive','draft','archived'], default: 'draft', index: true },
     isDeleted:   { type: Boolean, default: false, index: true },
     createdBy:   { type: Schema.Types.ObjectId, ref: 'User' },

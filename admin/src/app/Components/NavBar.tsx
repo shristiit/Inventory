@@ -21,7 +21,7 @@ interface Me {
   _id: string;
   username: string;
   email: string;
-  role: "admin" | "customer";
+  role: "admin" | "staff" | "customer";
   firstName?: string;
   lastName?: string;
   avatarUrl?: string;

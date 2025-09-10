@@ -11,6 +11,97 @@ import { Textarea } from "@/app/Components/textarea";
 import { Trash2, Pencil, Check, X as XIcon } from "lucide-react";
 import { ProductCategory } from "@/app/Assets/ProductData";
 
+// Predefined subcategory options provided by business
+const SUBCATEGORY_OPTIONS: string[] = [
+  "None",
+  "Annika Spring Summer 2010 Collection",
+  "Annika Spring Summer 2011 Collection",
+  "Annika Spring Summer 2012 Collection",
+  "Annika Spring Summer 2013 Collection",
+  "Dynasty Autumn Winter 2011 Collection",
+  "Dynasty Autumn Winter 2012 Collection",
+  "Dynasty Autumn Winter 2013 Collection",
+  "Dynasty Autumn Winter 2014 Collection",
+  "Dynasty Autumn Winter 2015 Collection",
+  "Dynasty Autumn Winter 2016 Collection",
+  "Dynasty Autumn Winter 2017 Collection",
+  "Dynasty Autumn Winter 2018 Collection",
+  "Dynasty Bridal Autumn Winter 2018 Collection",
+  "Dynasty Bridal Spring Summer 2012 Collection",
+  "Dynasty Bridal Spring Summer 2018 Collection",
+  "Dynasty Bridal Spring Summer 2019",
+  "Dynasty Cocktail Autumn Winter 2015 Collection",
+  "Dynasty Cocktail Autumn Winter 2016 Collection",
+  "Dynasty Cocktail Autumn Winter 2017 Collection",
+  "Dynasty Cocktail Autumn Winter 2018 Collection",
+  "Dynasty Cocktail Spring Summer 2016 Collection",
+  "Dynasty Cocktail Spring Summer 2017 Collection",
+  "Dynasty Cocktail Spring Summer 2018 Collection",
+  "Dynasty Cocktail Spring Summer 2019",
+  "Dynasty Curve Autumn Winter 2015 Collection",
+  "Dynasty Curve Autumn Winter 2016 Collection",
+  "Dynasty Curve Autumn Winter 2017 Collection",
+  "Dynasty Curve Autumn Winter 2018 Collection",
+  "Dynasty Curve Spring Summer 2016 Collection",
+  "Dynasty Curve Spring Summer 2017 Collection",
+  "Dynasty Curve Spring Summer 2018 Collection",
+  "Dynasty Curve Spring Summer 2019",
+  "Dynasty Curve Spring Summer 2020",
+  "Dynasty Krystal London",
+  "Dynasty London Spring Summer 2018 Collection",
+  "Dynasty London Spring Summer 2019",
+  "Dynasty London Spring Summer 2020",
+  "Dynasty Premium Spring Summer 2019",
+  "Dynasty Spirit Autumn Winter 2016 Collection",
+  "Dynasty Spirit Autumn Winter 2017 Collection",
+  "Dynasty Spirit Autumn Winter 2018 Collection",
+  "Dynasty Spirit Spring Summer 2016 Collection",
+  "Dynasty Spirit Spring Summer 2017 Collection",
+  "Dynasty Spirit Spring Summer 2018 Collection",
+  "Dynasty Spirit Spring Summer 2019",
+  "Dynasty Spring Summer 2010 Collection",
+  "Dynasty Spring Summer 2011 Collection",
+  "Dynasty Spring Summer 2012 Collection",
+  "Dynasty Spring Summer 2013 Collection",
+  "Dynasty Spring Summer 2014 Collection",
+  "Dynasty Spring Summer 2015 Collection",
+  "Dynasty Spring Summer 2016 Collection",
+  "Dynasty Spring Summer 2017 Collection",
+  "Dynasty Spring Summer 2018 Collection",
+  "Dynasty Spring Summer 2019",
+  "Viviana Autumn Winter 2010 Collection",
+  "Viviana Autumn Winter 2011 Collection",
+  "Viviana Autumn Winter 2012 Collection",
+  "Viviana Autumn Winter 2013 Collection",
+  "Viviana Autumn Winter 2014 Collection",
+  "Viviana Autumn Winter 2015 Collection",
+  "Viviana Spring Summer 2011 Collection",
+  "Viviana Spring Summer 2012 Collection",
+  "Viviana Spring Summer 2013 Collection",
+  "Viviana Spring Summer 2014 Collection",
+  "Viviana Spring Summer 2015 Collection",
+  "Yasmin Autumn Winter 2014 Collection",
+  "Yasmin Spring Summer 2011 Collection",
+  "Yasmin Spring Summer 2012 Collection",
+  "Yasmin Spring Summer 2013 Collection",
+  "Yasmin Spring Summer 2014 Collection",
+  "Yasmin Spring Summer 2015 Collection",
+];
+
+// Predefined category options for quick selection + auto-detect from style number
+const CATEGORY_OPTIONS: string[] = [
+  "Annika",
+  "Dynasty",
+  "Dynasty Bridal",
+  "Dynasty Cocktail",
+  "Dynasty Curve",
+  "Dynasty Krystal London",
+  "Dynasty Premium",
+  "Dynasty Spirit",
+  "Viviana",
+  "Yasmin",
+];
+
 /* ---------------- helpers ---------------- */
 function skuSuffixFromColor(name: string) {
   const letters = (name || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
@@ -66,7 +157,6 @@ const DRAFT_KEY = "product:new:draft:v1";
 type Line = {
   id: string; // stable key
   colorName: string;
-  colorCode?: string;
   sizeLabel: string;
   quantity: number; // onHand at WH-DEFAULT
 };
@@ -78,15 +168,14 @@ type DraftShape = {
   priceGBP: string | number;
   status: "active" | "inactive" | "draft" | "archived";
   category: string;
+  dressType?: string;
   supplier: string;
   season: string;
   wholesale: string | number;
 
   // quick add mini-form
   colorName: string;
-  colorCode: string;
   sizeLabel: string;
-  quantity: number;
 
   // table
   lines: Line[];
@@ -104,21 +193,68 @@ export default function NewProductPage() {
     "active" | "inactive" | "draft" | "archived"
   >("active");
   const [category, setCategory] = useState("");
+  const [subcategory, setSubcategory] = useState("");
+  const [dressType, setDressType] = useState("");
+
+  const DRESS_TYPES: string[] = [
+    "Ball Gown",
+    "Bracelets",
+    "Bridal",
+    "Classic Prom",
+    "Cocktail",
+    "Curve Allure",
+    "Curve Classic",
+    "Curve Cocktail",
+    "Earrings",
+    "Evening Elegance",
+    "Headpieces",
+    "Jewellery",
+    "Necklace",
+    "Pageant",
+    "Premium",
+    "Red Carpet Glamour",
+    "Rings",
+  ];
+
+  // Preset sizes: OS, letter sizes, and even numeric sizes 2-34
+  const PRESET_SIZES: string[] = [
+    "OS",
+    "S",
+    "M",
+    "L",
+    "XL",
+    "XXL",
+    ...Array.from({ length: (34 - 2) / 2 + 1 }, (_, i) => String(2 + i * 2)),
+  ];
   const [supplier, setSupplier] = useState("");
   const [season, setSeason] = useState("");
   const [wholesale, setWholesale] = useState<string | number>("");
 
   // quick add row (top mini-form)
   const [colorName, setColorName] = useState("");
-  const [colorCode, setColorCode] = useState("");
+  const [colorList, setColorList] = useState<string[]>([]);
+  // removed color code field
   const [sizeLabel, setSizeLabel] = useState("");
-  const [location,setLocation] = useState("")
+  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [quantity, setQuantity] = useState<number>(0);
+  const [location,setLocation] = useState("")
  const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
 
   // table rows
   const [lines, setLines] = useState<Line[]>([]);
+  const [colorSuggestions, setColorSuggestions] = useState<string[]>([]);
+  const [allColors, setAllColors] = useState<string[]>([]);
+  const [sizeSuggestions, setSizeSuggestions] = useState<Array<{ _id: string; label: string }>>([]);
+  const [categorySuggestions, setCategorySuggestions] = useState<Array<{ _id: string; name: string }>>([]);
+  const [subcategorySuggestions, setSubcategorySuggestions] = useState<Array<{ _id: string; name: string }>>([]);
+  const [allCategories, setAllCategories] = useState<string[]>([]);
+  const [allSuppliers, setAllSuppliers] = useState<string[]>([]);
+  const colorDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const sizeDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const categoryDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const subcategoryDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
 
   // inline edit state
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -128,6 +264,7 @@ export default function NewProductPage() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [autoCategory, setAutoCategory] = useState<string | null>(null);
   // preview SKU for current color (per-color)
   const handleFileMedia = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
@@ -148,6 +285,25 @@ export default function NewProductPage() {
       if (mediaPreview) URL.revokeObjectURL(mediaPreview);
     };
   }, [mediaPreview]);
+  // Load all colors once for local filtering (autocomplete startsWith)
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get(`/api/masters/colors`, { params: { q: '', limit: 1000 } });
+        const names: string[] = Array.isArray(data)
+          ? Array.from(new Set(
+              data
+                .map((c: any) => (typeof c === 'string' ? c : c?.name))
+                .filter((n: any) => typeof n === 'string' && n.trim().length)
+            ))
+              .sort((a, b) => a.localeCompare(b))
+          : [];
+        setAllColors(names);
+      } catch {
+        setAllColors([]);
+      }
+    })();
+  }, []);
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
@@ -167,14 +323,15 @@ export default function NewProductPage() {
         setStatus(parsed.status);
       }
       if (parsed.category != null) setCategory(parsed.category);
+      if (parsed.dressType != null) setDressType(parsed.dressType);
       if (parsed.supplier != null) setSupplier(parsed.supplier);
       if (parsed.season != null) setSeason(parsed.season);
       if (parsed.wholesale != null) setWholesale(parsed.wholesale);
 
       if (parsed.colorName != null) setColorName(parsed.colorName);
-      if (parsed.colorCode != null) setColorCode(parsed.colorCode);
+      // color code removed
       if (parsed.sizeLabel != null) setSizeLabel(parsed.sizeLabel);
-      if (typeof parsed.quantity === "number") setQuantity(parsed.quantity);
+      if (typeof (parsed as any).quantity === 'number') setQuantity((parsed as any).quantity as number);
 
       if (Array.isArray(parsed.lines)) setLines(parsed.lines);
       setInfo("Draft restored from local storage.");
@@ -182,6 +339,62 @@ export default function NewProductPage() {
       // ignore bad drafts
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-select category from style number when possible
+  useEffect(() => {
+    const alpha = (styleNumber || "").replace(/[^a-zA-Z]/g, "").toUpperCase();
+    if (!alpha) {
+      setAutoCategory(null);
+      return;
+    }
+    const norm = (s: string) => s.replace(/[^a-zA-Z]/g, "").toUpperCase();
+    const mapped = CATEGORY_OPTIONS.map((c) => ({ c, n: norm(c) }));
+    let hit = mapped.find((m) => alpha.startsWith(m.n));
+    if (!hit) hit = mapped.find((m) => alpha.includes(m.n));
+    const detected = hit?.c ?? null;
+    setAutoCategory(detected);
+    if (detected && !category) setCategory(detected);
+  }, [styleNumber]);
+
+  // Load all categories once to populate dropdown and datalist
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get(`/api/masters/categories`, { params: { q: '', limit: 1000 } });
+        const names: string[] = Array.isArray(data)
+          ? Array.from(new Set(
+              data
+                .map((c: any) => (typeof c === 'string' ? c : c?.name))
+                .filter((n: any) => typeof n === 'string' && n.trim().length)
+            ))
+              .sort((a, b) => a.localeCompare(b))
+          : [];
+        setAllCategories(names);
+      } catch {
+        setAllCategories([]);
+      }
+    })();
+  }, []);
+
+  // Load all suppliers once
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get(`/api/masters/suppliers`, { params: { q: '', limit: 1000 } });
+        const names: string[] = Array.isArray(data)
+          ? Array.from(new Set(
+              data
+                .map((c: any) => (typeof c === 'string' ? c : c?.name))
+                .filter((n: any) => typeof n === 'string' && n.trim().length)
+            ))
+              .sort((a, b) => a.localeCompare(b))
+          : [];
+        setAllSuppliers(names);
+      } catch {
+        setAllSuppliers([]);
+      }
+    })();
   }, []);
 
   /* ---------------- DRAFT: autosave (debounced) ---------------- */
@@ -196,11 +409,11 @@ export default function NewProductPage() {
         priceGBP,
         status,
         category,
+        dressType,
         supplier,
         season,
         wholesale,
         colorName,
-        colorCode,
         sizeLabel,
         quantity,
         lines,
@@ -218,11 +431,11 @@ export default function NewProductPage() {
     priceGBP,
     status,
     category,
+    dressType,
     supplier,
     season,
     wholesale,
     colorName,
-    colorCode,
     sizeLabel,
     quantity,
     lines,
@@ -250,9 +463,7 @@ export default function NewProductPage() {
       season,
       wholesale,
       colorName,
-      colorCode,
       sizeLabel,
-      quantity,
       lines,
     };
     localStorage.setItem(DRAFT_KEY, JSON.stringify(snapshot));
@@ -282,29 +493,33 @@ export default function NewProductPage() {
   function addLine() {
     setErr(null);
     const c = colorName.trim();
-    const s = sizeLabel.trim();
-    const q = Number(quantity);
 
-    if (!c) return setErr("Color is required.");
-    if (!s) return setErr("Size is required.");
-    if (!Number.isFinite(q) || q < 0) return setErr("Quantity must be ≥ 0.");
+    if (!c && colorList.length === 0) return setErr("Color is required.");
+    if (selectedSizes.length === 0) return setErr("Select at least one size.");
+    if (!Number.isFinite(quantity) || quantity < 0) return setErr("Quantity must be ≥ 0.");
 
-    const entries = parseSizesInput(s, q);
-    if (entries.length === 0)
-      return setErr("Provide at least one size (e.g., S,M,L or S:10,M:5).");
+    // Build entries from multi-select; default quantity 0
+    const entries = selectedSizes.map((label) => ({ label, quantity: Math.max(0, Number(quantity || 0)) }));
+    if (entries.length === 0) return setErr("Select at least one size.");
 
-    for (const { label, quantity } of entries) {
-      addOrMergeRow({
-        colorName: c,
-        colorCode: colorCode || undefined,
-        sizeLabel: label,
-        quantity: Math.max(0, quantity),
-      });
+    const colors = colorList.length ? colorList : [c];
+    for (const col of colors) {
+      for (const { label, quantity } of entries) {
+        addOrMergeRow({
+          colorName: col,
+          // color code removed
+          sizeLabel: label,
+          quantity: Math.max(0, quantity),
+        });
+      }
     }
 
     // Keep color so you can add more size batches for the same color
     setSizeLabel("");
-    setQuantity(0);
+    setSelectedSizes([]);
+    if (colorList.length) setColorList([]);
+    // leave colorName empty after bulk add
+    if (colorList.length) setColorName("");
     // If you prefer clearing color too, uncomment:
     // setColorName(""); setColorCode("");
   }
@@ -350,7 +565,7 @@ export default function NewProductPage() {
         next[dupIdx] = {
           ...next[dupIdx],
           quantity: next[dupIdx].quantity + Math.max(0, quantity),
-          colorCode: draft.colorCode || next[dupIdx].colorCode,
+          // color code removed
         };
         // remove the original edited row
         next.splice(editingIndex, 1);
@@ -385,7 +600,6 @@ export default function NewProductPage() {
         string,
         {
           colorName: string;
-          colorCode?: string;
           sizes: Array<{ label: string; quantity: number }>;
         }
       >();
@@ -393,11 +607,9 @@ export default function NewProductPage() {
         const key = normColor(ln.colorName);
         const entry = byColor.get(key) || {
           colorName: ln.colorName,
-          colorCode: ln.colorCode,
           sizes: [],
         };
         entry.sizes.push({ label: ln.sizeLabel, quantity: ln.quantity });
-        if (ln.colorCode) entry.colorCode = ln.colorCode;
         byColor.set(key, entry);
       }
 
@@ -423,7 +635,7 @@ export default function NewProductPage() {
         });
         return {
           sku,
-          color: { name: group.colorName, code: group.colorCode || undefined },
+          color: { name: group.colorName },
           status: "active" as const,
           media: [] as Array<{
             url: string;
@@ -434,18 +646,20 @@ export default function NewProductPage() {
         };
       });
 
+      // Ensure title starts with uppercase first letter
+      const t = (title || '').trim();
+      const titleCased = t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+
       const payload = {
         product: {
           styleNumber: style,
-          title: title.trim(),
+          title: titleCased,
           description: desc || undefined,
           price: toMinor(priceGBP),
-          attributes: {
-            category: category || undefined,
-            supplier: supplier || undefined,
-            season: season || undefined,
-            wholesale: wholesale === "" ? undefined : Number(wholesale),
-          },
+          category: category || undefined,
+          subcategory: subcategory || undefined,
+          dressType: dressType || undefined,
+          supplier: supplier || undefined,
           status,
         },
         variants,
@@ -467,9 +681,8 @@ export default function NewProductPage() {
           if (variantId) {
             const fd = new FormData();
             fd.append('files', mediaFile);
-            await api.post(`/api/products/variants/${variantId}/media`, fd, {
-              headers: { 'Content-Type': 'multipart/form-data' },
-            });
+            // Let Axios set the correct multipart boundary header
+            await api.post(`/api/products/variants/${variantId}/media`, fd);
           }
         }
       } catch (e) {
@@ -508,84 +721,157 @@ export default function NewProductPage() {
       </div> */}
 
       <form onSubmit={onSave} className="space-y-8">
-        {/* ---------- Product core ---------- */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4 border rounded p-4">
-          <div>
-            <Label className="m-2">Style Number</Label>
-            <Input
-              value={styleNumber}
-              onChange={(e) => setStyleNumber(e.target.value)}
-              required
-              placeholder="STY-500010"
-            />
-          </div>
-          <div>
-            <Label className="m-2">Title</Label>
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-              placeholder="Men's Running Shoe"
-            />
-          </div>
-          <div>
-            <Label className="m-2">Price ($)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              value={priceGBP}
-              onChange={(e) => setPriceGBP(e.target.value)}
-              placeholder="79.99"
-            />
-          </div>
-          <div>
-            <Label className="m-2">Status</Label>
-            <select
-              className="w-full h-10 border rounded px-3"
-              value={status}
-              onChange={(e) => setStatus(e.target.value as any)}
-            >
-              <option value="active">active</option>
-              <option value="inactive">inactive</option>
-              <option value="draft">draft</option>
-              <option value="archived">archived</option>
-            </select>
-          </div>
-          <div className="md:col-span-2">
-            <Label className="m-2">Description</Label>
-            <Textarea
-              rows={4}
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label className="m-2">Category</Label>
-            <Input
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label className="m-2">Supplier</Label>
-            <Input
-              value={supplier}
-              onChange={(e) => setSupplier(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label className="m-2">Season</Label>
-            <Input value={season} onChange={(e) => setSeason(e.target.value)} />
-          </div>
-          <div>
-            <Label className="m-2">Cost Price ($)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              value={wholesale}
-              onChange={(e) => setWholesale(e.target.value)}
-            />
-          </div>
+        {/* ---------- Product core (Table layout) ---------- */}
+        <section className="border rounded p-4">
+          <table className="w-full text-sm">
+            <tbody>
+              <tr>
+                <td className="w-48 align-top p-2 font-medium">Style Number</td>
+                <td className="p-2">
+                  <Input value={styleNumber} onChange={(e) => setStyleNumber(e.target.value)} required placeholder="STY-500010" />
+                </td>
+              </tr>
+              <tr>
+                <td className="align-top p-2 font-medium">Title</td>
+                <td className="p-2">
+                  <Input
+                    value={title}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      const cased = v ? v.charAt(0).toUpperCase() + v.slice(1) : v;
+                      setTitle(cased);
+                    }}
+                    required
+                    placeholder="Product title"
+                  />
+                </td>
+              </tr>
+              <tr>
+                <td className="align-top p-2 font-medium">Price ($)</td>
+                <td className="p-2">
+                  <Input type="number" step="0.01" value={priceGBP} onChange={(e) => setPriceGBP(e.target.value)} placeholder="79.99" />
+                </td>
+              </tr>
+              <tr>
+                <td className="align-top p-2 font-medium">Status</td>
+                <td className="p-2">
+                  <select className="w-full h-10 border rounded px-3" value={status} onChange={(e) => setStatus(e.target.value as any)}>
+                    <option value="active">active</option>
+                    <option value="inactive">inactive</option>
+                    <option value="draft">draft</option>
+                    <option value="archived">archived</option>
+                  </select>
+                </td>
+              </tr>
+              <tr>
+                <td className="align-top p-2 font-medium">Description</td>
+                <td className="p-2">
+                  <Textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
+                </td>
+              </tr>
+              <tr>
+                <td className="align-top p-2 font-medium">Category</td>
+                <td className="p-2">
+                  <div className="relative">
+                    <Input
+                      value={category}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setCategory(v);
+                        setSelectedCategoryId(null);
+                        if (categoryDebounceRef.current) clearTimeout(categoryDebounceRef.current);
+                        if (v.trim().length < 2) return setCategorySuggestions([]);
+                        categoryDebounceRef.current = setTimeout(async () => {
+                          try {
+                            const { data } = await api.get(`/api/masters/categories`, { params: { q: v, limit: 8 } });
+                            setCategorySuggestions(data || []);
+                          } catch { setCategorySuggestions([]); }
+                        }, 200);
+                      }}
+                      list="category-options"
+                      placeholder="e.g., Dynasty"
+                    />
+                    {categorySuggestions.length > 0 && (
+                      <div className="absolute z-10 mt-1 w-full rounded border bg-white shadow">
+                        {categorySuggestions.map((c) => (
+                          <button type="button" key={c._id} className="w-full text-left px-2 py-1 hover:bg-gray-100" onClick={() => { setCategory(c.name); setSelectedCategoryId(c._id); setCategorySuggestions([]); }}>
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {autoCategory && autoCategory !== category && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        Auto-detected from style: <button type="button" className="underline" onClick={() => setCategory(autoCategory!)}>{autoCategory}</button>
+                      </div>
+                    )}
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td className="align-top p-2 font-medium">Subcategory</td>
+                <td className="p-2">
+                  <select className="w-full h-10 border rounded px-3" value={subcategory} onChange={(e) => setSubcategory(e.target.value)}>
+                    <option value="">None</option>
+                    {SUBCATEGORY_OPTIONS.filter((o) => o !== "None").map((o) => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                </td>
+              </tr>
+              <tr>
+                <td className="align-top p-2 font-medium">Supplier</td>
+                <td className="p-2">
+                  <Input value={supplier} onChange={(e) => setSupplier(e.target.value)} list="supplier-options" />
+                </td>
+              </tr>
+              <tr>
+                <td className="align-top p-2 font-medium">Season</td>
+                <td className="p-2">
+                  <select className="w-full h-10 border rounded px-3" value={season} onChange={(e) => setSeason(e.target.value)}>
+                    <option value="">Select Season</option>
+                    <option value="AW10">AW10</option>
+                    <option value="AW11">AW11</option>
+                    <option value="AW12">AW12</option>
+                    <option value="AW13">AW13</option>
+                    <option value="AW14">AW14</option>
+                    <option value="AW15">AW15</option>
+                    <option value="AW16">AW16</option>
+                    <option value="AW17">AW17</option>
+                    <option value="AW18">AW18</option>
+                    <option value="SS10">SS10</option>
+                    <option value="SS11">SS11</option>
+                    <option value="SS12">SS12</option>
+                    <option value="SS13">SS13</option>
+                    <option value="SS14">SS14</option>
+                    <option value="SS15">SS15</option>
+                    <option value="SS16">SS16</option>
+                    <option value="SS17">SS17</option>
+                    <option value="SS18">SS18</option>
+                    <option value="SS19">SS19</option>
+                    <option value="SS20">SS20</option>
+                  </select>
+                </td>
+              </tr>
+              <tr>
+                <td className="align-top p-2 font-medium">Dress Type</td>
+                <td className="p-2">
+                  <select className="w-full h-10 border rounded px-3" value={dressType} onChange={(e) => setDressType(e.target.value)}>
+                    <option value="">None</option>
+                    {DRESS_TYPES.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </td>
+              </tr>
+              <tr>
+                <td className="align-top p-2 font-medium">Cost Price ($)</td>
+                <td className="p-2">
+                  <Input type="number" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} />
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </section>
 
         {/* ---------- Quick add row ---------- */}
@@ -595,26 +881,132 @@ export default function NewProductPage() {
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
             <div>
               <Label className="m-2">Color name</Label>
-              <Input
-                value={colorName}
-                onChange={(e) => setColorName(e.target.value)}
-                placeholder="Enter Color"
-              />
+              <div className="relative">
+                <Input
+                  value={colorName}
+                  onChange={async (e) => {
+                    const v = e.target.value;
+                    setColorName(v);
+                    const q = v.trim().toLowerCase();
+                    if (!q) return setColorSuggestions([]);
+                    let sugg = allColors
+                      .filter((n) => n.toLowerCase().startsWith(q))
+                      .slice(0, 15);
+                    // Fallback to API if local cache is empty
+                    if (sugg.length === 0 && allColors.length === 0) {
+                      try {
+                        const { data } = await api.get(`/api/masters/colors`, { params: { q: v, limit: 15 } });
+                        const names: string[] = Array.isArray(data)
+                          ? Array.from(new Set(
+                              data
+                                .map((c: any) => (typeof c === 'string' ? c : c?.name))
+                                .filter((n: any) => typeof n === 'string' && n.trim().length)
+                            ))
+                          : [];
+                        setColorSuggestions(names);
+                        return;
+                      } catch {
+                        // ignore
+                      }
+                    }
+                    setColorSuggestions(sugg);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const v = colorName.trim();
+                      if (!v) return;
+                      const exists = colorList.some((c) => normColor(c) === normColor(v));
+                      if (!exists) setColorList((prev) => [...prev, v]);
+                      setColorName("");
+                      setColorSuggestions([]);
+                    }
+                  }}
+                  placeholder="Enter Color and press Enter"
+                />
+                {colorSuggestions.length > 0 && (
+                  <div className="absolute z-10 mt-1 w-full rounded border bg-white shadow">
+                    {colorSuggestions.map((c) => (
+                      <button
+                        type="button"
+                        key={c}
+                        className="w-full text-left px-2 py-1 hover:bg-gray-100"
+                        onClick={() => {
+                          setColorName(c);
+                          setColorSuggestions([]);
+                        }}
+                      >
+                        <span className="mr-2">{c}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {colorList.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {colorList.map((c, idx) => (
+                      <span key={`${c}-${idx}`} className="inline-flex items-center bg-gray-100 border border-gray-300 rounded-full px-2 py-1 text-xs">
+                        {c}
+                        <button
+                          type="button"
+                          className="ml-2 text-gray-500 hover:text-gray-700"
+                          onClick={() => setColorList((prev) => prev.filter((_, i) => i !== idx))}
+                          aria-label={`Remove ${c}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <div>
-              <Label className="m-2">Color code</Label>
-              <Input
-                value={colorCode}
-                onChange={(e) => setColorCode(e.target.value)}
-                placeholder="#111111 (optional)"
-              />
-            </div>
+            
             <div>
               <Label className="m-2">Size</Label>
+              <select
+                className="w-full h-10 border rounded px-3"
+                value={""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  setSelectedSizes((prev) => (prev.includes(v) ? prev : [...prev, v]));
+                }}
+              >
+                <option value="" disabled>
+                  Select size
+                </option>
+                {PRESET_SIZES.map((sz) => (
+                  <option key={sz} value={sz}>
+                    {sz}
+                  </option>
+                ))}
+              </select>
+              {selectedSizes.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {selectedSizes.map((sz, idx) => (
+                    <span key={`${sz}-${idx}`} className="inline-flex items-center bg-gray-100 border border-gray-300 rounded-full px-2 py-1 text-xs">
+                      {sz}
+                      <button
+                        type="button"
+                        className="ml-2 text-gray-500 hover:text-gray-700"
+                        onClick={() => setSelectedSizes((prev) => prev.filter((s) => s !== sz))}
+                        aria-label={`Remove ${sz}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <Label className="m-2">Quantity</Label>
               <Input
-                value={sizeLabel}
-                onChange={(e) => setSizeLabel(e.target.value)}
-                placeholder="OS / S,M,L or S:10,M:5,UK 8:0"
+                type="number"
+                min={0}
+                value={quantity}
+                onChange={(e) => setQuantity(Math.max(0, Number(e.target.value || 0)))}
+                placeholder="0"
               />
             </div>
             <div>
@@ -660,12 +1052,7 @@ export default function NewProductPage() {
                   </span>
                 </figure>
               )}
-            <div>
-              <Label>Quantity</Label>
-              <Input placeholder="Enter Quantity"
-              value={quantity}
-              onChange={(e) => setQuantity(Number(e.target.value))} />
-            </div>
+            {/* Quantity input removed in quick add */}
 
             <div className="flex items-end">
               <Button className="ml-2" type="button" onClick={addLine}>
@@ -678,9 +1065,7 @@ export default function NewProductPage() {
             SKU will be generated per color: <code>{skuPreview}</code>.
           </p>
           <p className="text-xs text-muted-foreground">
-            Tip: add multiple sizes separated by commas. Use{" "}
-            <code>size:qty</code> to override quantity per size (e.g.,{" "}
-            <code>S:10,M:5</code>).
+            Tip: hold Ctrl/Cmd to select multiple sizes.
           </p>
 
           {/* ---------- Editable table ---------- */}
@@ -822,6 +1207,24 @@ export default function NewProductPage() {
           </Button>
         </div>
       </form>
+      {/* Category quick-pick options (populated from master) */}
+      <datalist id="category-options">
+        {allCategories.map((o) => (
+          <option key={o} value={o} />
+        ))}
+      </datalist>
+      {/* Supplier quick-pick options (populated from master) */}
+      <datalist id="supplier-options">
+        {allSuppliers.map((o) => (
+          <option key={o} value={o} />
+        ))}
+      </datalist>
+      {/* Category quick-pick options for the input above */}
+      <datalist id="category-options">
+        {CATEGORY_OPTIONS.map((o) => (
+          <option key={o} value={o} />
+        ))}
+      </datalist>
     </div>
   );
 }

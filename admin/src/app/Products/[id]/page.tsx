@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,26 @@ import {
   ChevronRight,
   Plus,
 } from "lucide-react";
+import type {} from 'react';
+const DRESS_TYPES: string[] = [
+  "Ball Gown",
+  "Bracelets",
+  "Bridal",
+  "Classic Prom",
+  "Cocktail",
+  "Curve Allure",
+  "Curve Classic",
+  "Curve Cocktail",
+  "Earrings",
+  "Evening Elegance",
+  "Headpieces",
+  "Jewellery",
+  "Necklace",
+  "Pageant",
+  "Premium",
+  "Red Carpet Glamour",
+  "Rings",
+];
 
 /* ---------- Types ---------- */
 type Size = {
@@ -51,6 +71,7 @@ type ProductDeep = {
   description?: string;
   price: number; // pence
   status: "active" | "inactive" | "draft" | "archived";
+  dressType?: string;
   attributes?: Record<string, any>;
   variants?: Variant[];
 };
@@ -139,6 +160,8 @@ type SizeDraft = {
 export default function ProductDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const readOnly = (searchParams?.get('readonly') ?? '').toLowerCase() === '1' || (searchParams?.get('view') ?? '').toLowerCase() === 'readonly';
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -153,7 +176,8 @@ export default function ProductDetailsPage() {
   const [desc, setDesc] = useState("");
   const [pricePounds, setPricePounds] = useState("");
   const [status, setStatus] = useState<ProductDeep["status"]>("draft");
-  const [attributes, setAttributes] = useState<Record<string, string>>({});
+  const [dressType, setDressType] = useState<string>("");
+  // attributes removed from edit UI
 
   // variants
   const [variants, setVariants] = useState<Variant[]>([]);
@@ -169,6 +193,8 @@ export default function ProductDetailsPage() {
 
   // add new variant (+ multiple sizes)
   const [addingVariant, setAddingVariant] = useState(false);
+  const [colorOptions, setColorOptions] = useState<any[]>([]);
+  const [newSelectedSizes, setNewSelectedSizes] = useState<string[]>([]);
   const [newVariant, setNewVariant] = useState<{
     sku: string;
     colorName: string;
@@ -198,14 +224,9 @@ export default function ProductDetailsPage() {
       setDesc(data.description || "");
       setPricePounds(poundsFromMinor(data.price));
       setStatus(data.status || "draft");
+      setDressType(data.dressType || "");
 
-      const attrs: Record<string, string> = {};
-      if (data.attributes && typeof data.attributes === "object") {
-        Object.entries(data.attributes).forEach(([k, v]) => {
-          attrs[k] = v != null ? String(v) : "";
-        });
-      }
-      setAttributes(attrs);
+      // attributes ignored in edit UI
 
       setVariants(data.variants || []);
       setEditingVariantId(null);
@@ -224,38 +245,7 @@ export default function ProductDetailsPage() {
     refreshProduct();
   }, [id]);
 
-  /* ---------- Attributes editor ---------- */
-  const attrPairs = useMemo(() => Object.entries(attributes), [attributes]);
-
-  function addAttrRow() {
-    let i = 1;
-    let key = "key";
-    while (attributes[key]) {
-      i += 1;
-      key = `key${i}`;
-    }
-    setAttributes((a) => ({ ...a, [key]: "" }));
-  }
-  function updateAttrKey(oldKey: string, newKey: string) {
-    if (!newKey || newKey === oldKey) return;
-    setAttributes((attrs) => {
-      const next: Record<string, string> = {};
-      Object.entries(attrs).forEach(([k, v]) => {
-        if (k === oldKey) next[newKey] = v;
-        else next[k] = v;
-      });
-      return next;
-    });
-  }
-  function updateAttrVal(k: string, v: string) {
-    setAttributes((a) => ({ ...a, [k]: v }));
-  }
-  function removeAttr(k: string) {
-    setAttributes((a) => {
-      const { [k]: _, ...rest } = a;
-      return rest;
-    });
-  }
+  // Attributes editor removed
 
   /* ---------- Save product core ---------- */
   async function onSaveProduct(e: React.FormEvent) {
@@ -263,17 +253,12 @@ export default function ProductDetailsPage() {
     setSaving(true);
     setErr(null);
     try {
-      const cleanAttrs: Record<string, any> = {};
-      for (const [k, v] of Object.entries(attributes)) {
-        if (!k.trim()) continue;
-        cleanAttrs[k.trim()] = v;
-      }
       const payload: Partial<ProductDeep> = {
         styleNumber: styleNumber.trim(),
         title: title.trim(),
         description: desc,
         status,
-        attributes: cleanAttrs,
+        dressType: dressType || undefined,
       };
       const cents = minorFromPounds(pricePounds);
       if (typeof cents === "number") payload.price = cents;
@@ -360,10 +345,17 @@ export default function ProductDetailsPage() {
       alert("SKU and Color name are required.");
       return;
     }
-    const sizeEntries = parseSizesInput(
-      newVariant.sizesInput,
-      Math.max(0, Number(newVariant.defaultQty || 0))
-    );
+    // Prefer selected sizes; fallback to free text
+    let sizeEntries: Array<{ label: string; quantity: number }> = [];
+    if (newSelectedSizes.length > 0) {
+      const qty = Math.max(0, Number(newVariant.defaultQty || 0));
+      sizeEntries = newSelectedSizes.map((label) => ({ label, quantity: qty }));
+    } else {
+      sizeEntries = parseSizesInput(
+        newVariant.sizesInput,
+        Math.max(0, Number(newVariant.defaultQty || 0))
+      );
+    }
     if (sizeEntries.length === 0) {
       alert('Add at least one size (e.g., "S,M,L" or "S:10,M:5").');
       return;
@@ -429,6 +421,7 @@ export default function ProductDetailsPage() {
         location: "WH-DEFAULT",
       });
       setAddingVariant(false);
+      setNewSelectedSizes([]);
     } catch (e: any) {
       alert(e?.response?.data?.message || "Failed to add variant.");
     }
@@ -601,7 +594,11 @@ export default function ProductDetailsPage() {
       </div>
 
       {/* Product core form */}
+      {readOnly && (
+        <div className="mb-2 text-xs text-gray-600">Read-only view (opened from barcode)</div>
+      )}
       <form onSubmit={onSaveProduct} className="space-y-8">
+        <fieldset disabled={readOnly} className={readOnly ? 'opacity-90' : ''}>
         <section className="grid grid-cols-1 md:grid-cols-2 gap-4 border rounded p-4">
           <div>
             <Label className="m-2">Style number</Label>
@@ -658,53 +655,28 @@ export default function ProductDetailsPage() {
           </div>
         </section>
 
-        {/* Attributes editor */}
-        <section className="border rounded p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-medium">Attributes</h2>
-            <Button type="button" variant="secondary" onClick={addAttrRow}>
-              Add row
-            </Button>
+        {/* Dress Type */}
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-4 border rounded p-4">
+          <div>
+            <Label className="m-2">Dress Type</Label>
+            <select
+              className="w-full h-10 border rounded px-3"
+              value={dressType}
+              onChange={(e) => setDressType(e.target.value)}
+            >
+              <option value="">None</option>
+              {DRESS_TYPES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
           </div>
-
-          {attrPairs.length === 0 && (
-            <p className="text-sm text-muted-foreground">No attributes yet.</p>
-          )}
-
-          {attrPairs.map(([k, v]) => (
-            <div key={k} className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              <Input
-                value={k}
-                onChange={(e) => updateAttrKey(k, e.target.value)}
-                placeholder="key (e.g., brand)"
-              />
-              <Input
-                value={v}
-                onChange={(e) => updateAttrVal(k, e.target.value)}
-                placeholder="value (e.g., Aurum)"
-              />
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => updateAttrVal(k, "")}
-                >
-                  Clear
-                </Button>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={() => removeAttr(k)}
-                >
-                  Remove
-                </Button>
-              </div>
-            </div>
-          ))}
         </section>
 
+        {/* Attributes editor removed */}
+        </fieldset>
+
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={saving}>
+          <Button type="submit" disabled={saving || readOnly}>
             {saving ? "Saving…" : "Save product"}
           </Button>
           <Button
@@ -719,6 +691,7 @@ export default function ProductDetailsPage() {
             variant="destructive"
             className="ml-auto"
             onClick={onDeleteProduct}
+            disabled={readOnly}
           >
             Archive product
           </Button>
@@ -754,16 +727,44 @@ export default function ProductDetailsPage() {
                 </div>
                 <div>
                   <Label className="m-2">Color name</Label>
-                  <Input
-                    value={newVariant.colorName}
-                    onChange={(e) =>
-                      setNewVariant({
-                        ...newVariant,
-                        colorName: e.target.value,
-                      })
-                    }
-                    placeholder="Black"
-                  />
+                  <div className="relative">
+                    <Input
+                      value={newVariant.colorName}
+                      onChange={async (e) => {
+                        const v = e.target.value;
+                        setNewVariant({ ...newVariant, colorName: v });
+                        if (!v || v.trim().length < 2) {
+                          setColorOptions([]);
+                          return;
+                        }
+                        try {
+                          const { data } = await api.get(`/api/masters/colors`, { params: { q: v, limit: 8 } });
+                          setColorOptions(data || []);
+                        } catch {
+                          setColorOptions([]);
+                        }
+                      }}
+                      placeholder="Black"
+                    />
+                    {colorOptions.length > 0 && (
+                      <div className="absolute z-10 mt-1 w-full rounded border bg-white shadow">
+                        {colorOptions.map((c: any) => (
+                          <button
+                            type="button"
+                            key={c._id}
+                            className="w-full text-left px-2 py-1 hover:bg-gray-100"
+                            onClick={() => {
+                              setNewVariant({ ...newVariant, colorName: c.name, colorCode: c.code || newVariant.colorCode });
+                              setColorOptions([]);
+                            }}
+                          >
+                            <span className="mr-2">{c.name}</span>
+                            {c.code ? <span className="text-xs text-gray-500">{c.code}</span> : null}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <Label className="m-2">Color code (optional)</Label>
@@ -812,15 +813,23 @@ export default function ProductDetailsPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="md:col-span-2">
                   <Label className="m-2">Sizes</Label>
-                  <Input
-                    value={newVariant.sizesInput}
+                  <select
+                    multiple
+                    className="w-full h-28 border rounded px-3"
+                    value={newSelectedSizes}
                     onChange={(e) =>
-                      setNewVariant({
-                        ...newVariant,
-                        sizesInput: e.target.value,
-                      })
+                      setNewSelectedSizes(Array.from(e.target.selectedOptions, (o) => o.value))
                     }
-                    placeholder='OS / "S,M,L" or "S:10,M:5,UK 8:0"'
+                  >
+                    {PRESET_SIZES.map((sz) => (
+                      <option key={sz} value={sz}>{sz}</option>
+                    ))}
+                  </select>
+                  <Input
+                    className="mt-2"
+                    value={newVariant.sizesInput}
+                    onChange={(e) => setNewVariant({ ...newVariant, sizesInput: e.target.value })}
+                    placeholder='Optional: "S,M,L" or "S:10,M:5"'
                   />
                 </div>
                 <div>

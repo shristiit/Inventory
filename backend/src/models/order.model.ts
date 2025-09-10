@@ -6,6 +6,10 @@ export interface IOrderProduct {
   name: string;
   price: number;
   quantity: number;
+  product_id: string;
+  variantId?: string;
+  sizeId?: string;
+  location?: string;
 }
 
 export interface IOrder extends Document {
@@ -28,6 +32,9 @@ const orderSchema = new Schema<IOrder>(
         price: { type: Number, required: true, min: 0 },
         quantity: { type: Number, required: true, min: 1 },
         product_id: { type: String, required: true },
+        variantId: { type: String },
+        sizeId: { type: String },
+        location: { type: String },
       },
     ],
     totalAmount: { type: Number, required: true, min: 0 },
@@ -43,4 +50,3 @@ const orderSchema = new Schema<IOrder>(
 );
 
 export default model<IOrder>("Order", orderSchema);
-

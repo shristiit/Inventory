@@ -3,13 +3,25 @@ import Variant, { type MediaItem } from '../models/variant.model';
 import Size from '../models/size.model';
 import Product from '../models/product.model';
 import Archive from '../models/archive.model';
+import * as master from './master.service';
 
 /* ---------- Basic CRUD ---------- */
 export async function add(productId: string, dto: any, adminId: any) {
+  let color = dto.color;
+  let colorMasterId = dto.colorMasterId;
+  if (!colorMasterId && color?.name) {
+    try {
+      const cm = await master.upsertColor(color.name, color.code);
+      colorMasterId = cm?._id;
+      color = { name: cm?.name || color.name, code: cm?.code || color.code };
+    } catch {}
+  }
+
   return Variant.create({
     productId,
     sku: dto.sku,
-    color: dto.color,
+    colorMasterId,
+    color,
     media: dto.media ?? [],
     createdBy: adminId,
   });

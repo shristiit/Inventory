@@ -4,6 +4,7 @@ import Product from '../models/product.model';
 import Variant from '../models/variant.model';
 import Size from '../models/size.model';
 import Archive from '../models/archive.model';
+import * as master from './master.service';
 
 type DeepCreateInput = {
   product: {
@@ -12,8 +13,12 @@ type DeepCreateInput = {
     description?: string;
     price: number;
     vatprice: number;
-    attributes?: any;
     status?: 'active' | 'inactive' | 'draft' | 'archived';
+    category?: string;
+    subcategory?: string;
+    dressType?: string;
+    dresstype?: string;
+    supplier?: string;
   };
   variants: Array<{
     sku: string;
@@ -42,12 +47,39 @@ export async function createDeep(input: DeepCreateInput, adminId: any) {
   session.startTransaction();
   try {
     // 1) product
+    // Omit unsupported fields like `attributes` from create payload
+    const { attributes: _omitAttributes, category, subcategory, dressType, dresstype, supplier, ...productInput } = (input.product as any) || {};
+
+    // Upsert category/subcategory
+    let categoryId: any = null;
+    let subcategoryId: any = null;
+    let supplierId: any = null;
+    if (category) {
+      try {
+        const cat = await master.upsertCategory(category);
+        categoryId = cat?._id ?? null;
+        if (subcategory) {
+          const sub = await master.upsertCategory(subcategory, categoryId);
+          subcategoryId = sub?._id ?? null;
+        }
+      } catch {}
+    }
+    if (supplier) {
+      try {
+        const sup = await master.upsertSupplier(supplier);
+        supplierId = sup?._id ?? null;
+      } catch {}
+    }
     const [product] = await Product.create(
       [
         {
-          ...input.product,
-          status: input.product.status ?? 'active',
+          ...productInput,
+          status: productInput.status ?? 'active',
           createdBy: adminId,
+          categoryId,
+          subcategoryId,
+          supplierId,
+          dressType: dressType ?? dresstype ?? undefined,
         },
       ],
       { session }
@@ -55,12 +87,23 @@ export async function createDeep(input: DeepCreateInput, adminId: any) {
 
     // 2) variants + sizes
     for (const v of input.variants) {
+      // upsert color master from provided color
+      let colorMasterId: any = (v as any).colorMasterId;
+      let color = v.color;
+      if (!colorMasterId && color?.name) {
+        try {
+          const cm = await master.upsertColor(color.name, color.code);
+          colorMasterId = cm?._id;
+          color = { name: cm?.name || color.name, code: cm?.code || color.code };
+        } catch {}
+      }
       const [variant] = await Variant.create(
         [
           {
             productId: product._id,
             sku: v.sku,
-            color: v.color,
+            colorMasterId,
+            color,
             media: v.media ?? [],
             createdBy: adminId,
           },
@@ -69,19 +112,30 @@ export async function createDeep(input: DeepCreateInput, adminId: any) {
       );
 
       if (v.sizes?.length) {
-        const sizeDocs = v.sizes.map((s) => ({
-          variantId: variant._id,
-          label: s.label,
-          barcode: s.barcode,
-          inventory:
-            s.inventory?.map((i) => ({
-              location: i.location,
-              onHand: i.onHand,
-              onOrder: i.onOrder ?? 0,
-              reserved: i.reserved ?? 0,
-            })) ?? [],
-          createdBy: adminId,
-        }));
+        const sizeDocs = [] as any[];
+        for (const s of v.sizes) {
+          let sizeMasterId: any = (s as any).sizeMasterId;
+          if (!sizeMasterId && s?.label) {
+            try {
+              const sm = await master.upsertSize(s.label);
+              sizeMasterId = sm?._id;
+            } catch {}
+          }
+          sizeDocs.push({
+            variantId: variant._id,
+            sizeMasterId,
+            label: s.label,
+            barcode: s.barcode,
+            inventory:
+              s.inventory?.map((i) => ({
+                location: i.location,
+                onHand: i.onHand,
+                onOrder: i.onOrder ?? 0,
+                reserved: i.reserved ?? 0,
+              })) ?? [],
+            createdBy: adminId,
+          });
+        }
         await Size.insertMany(sizeDocs, { session });
       }
     }
