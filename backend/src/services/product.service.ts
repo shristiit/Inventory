@@ -5,6 +5,7 @@ import Variant from '../models/variant.model';
 import Size from '../models/size.model';
 import Archive from '../models/archive.model';
 import * as master from './master.service';
+import Counter from '../models/counter.model';
 
 type DeepCreateInput = {
   product: {
@@ -50,6 +51,17 @@ export async function createDeep(input: DeepCreateInput, adminId: any) {
     // Omit unsupported fields like `attributes` from create payload
     const { attributes: _omitAttributes, category, subcategory, dressType, dresstype, supplier, ...productInput } = (input.product as any) || {};
 
+    // Auto-generate a numeric styleNumber if missing/invalid
+    let styleNumber: string | undefined = productInput.styleNumber;
+    if (typeof styleNumber !== 'string' || !/^\d+$/.test(styleNumber)) {
+      const next = await Counter.findOneAndUpdate(
+        { key: 'styleNumber' },
+        { $inc: { seq: 1 }, $setOnInsert: { seq: 100000 } },
+        { new: true, upsert: true }
+      ).lean();
+      styleNumber = String(next?.seq ?? Date.now());
+    }
+
     // Upsert category/subcategory
     let categoryId: any = null;
     let subcategoryId: any = null;
@@ -74,6 +86,7 @@ export async function createDeep(input: DeepCreateInput, adminId: any) {
       [
         {
           ...productInput,
+          styleNumber,
           status: productInput.status ?? 'active',
           createdBy: adminId,
           categoryId,

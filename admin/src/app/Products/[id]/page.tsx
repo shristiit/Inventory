@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import api from "@/lib/api";
@@ -193,7 +193,10 @@ export default function ProductDetailsPage() {
 
   // add new variant (+ multiple sizes)
   const [addingVariant, setAddingVariant] = useState(false);
-  const [colorOptions, setColorOptions] = useState<any[]>([]);
+  // Color suggestions (load all once, then filter locally by prefix, with API fallback)
+  const [allColors, setAllColors] = useState<string[]>([]);
+  const [colorOptions, setColorOptions] = useState<string[]>([]);
+  const colorDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const [newSelectedSizes, setNewSelectedSizes] = useState<string[]>([]);
   const [newVariant, setNewVariant] = useState<{
     sku: string;
@@ -244,6 +247,25 @@ export default function ProductDetailsPage() {
     if (!id) return;
     refreshProduct();
   }, [id]);
+
+  // Load all colors once for local prefix search in Add Color & Sizes
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get(`/api/masters/colors`, { params: { q: '', limit: 1000 } });
+        const names: string[] = Array.isArray(data)
+          ? Array.from(new Set(
+              data
+                .map((c: any) => (typeof c === 'string' ? c : c?.name))
+                .filter((n: any) => typeof n === 'string' && n.trim().length)
+            )).sort((a, b) => a.localeCompare(b))
+          : [];
+        setAllColors(names);
+      } catch {
+        setAllColors([]);
+      }
+    })();
+  }, []);
 
   // Attributes editor removed
 
@@ -730,36 +752,52 @@ export default function ProductDetailsPage() {
                   <div className="relative">
                     <Input
                       value={newVariant.colorName}
-                      onChange={async (e) => {
+                      onChange={(e) => {
                         const v = e.target.value;
                         setNewVariant({ ...newVariant, colorName: v });
-                        if (!v || v.trim().length < 2) {
+                        const q = v.trim().toLowerCase();
+                        if (colorDebounceRef.current) clearTimeout(colorDebounceRef.current);
+                        if (!q) {
                           setColorOptions([]);
                           return;
                         }
-                        try {
-                          const { data } = await api.get(`/api/masters/colors`, { params: { q: v, limit: 8 } });
-                          setColorOptions(data || []);
-                        } catch {
-                          setColorOptions([]);
-                        }
+                        // immediate local suggestions
+                        const local = allColors.filter((n) => n.toLowerCase().startsWith(q)).slice(0, 15);
+                        setColorOptions(local);
+                        // debounce API fetch to ensure coverage
+                        colorDebounceRef.current = setTimeout(async () => {
+                          try {
+                            const { data } = await api.get(`/api/masters/colors`, { params: { q: v, limit: 15 } });
+                            const names: string[] = Array.isArray(data)
+                              ? Array.from(
+                                  new Set(
+                                    data
+                                      .map((c: any) => (typeof c === 'string' ? c : c?.name))
+                                      .filter((n: any) => typeof n === 'string' && n.trim().length)
+                                  )
+                                )
+                              : [];
+                            if (names.length) setColorOptions(names);
+                          } catch {
+                            // ignore fetch errors
+                          }
+                        }, 200);
                       }}
                       placeholder="Black"
                     />
                     {colorOptions.length > 0 && (
                       <div className="absolute z-10 mt-1 w-full rounded border bg-white shadow">
-                        {colorOptions.map((c: any) => (
+                        {colorOptions.map((name) => (
                           <button
                             type="button"
-                            key={c._id}
+                            key={name}
                             className="w-full text-left px-2 py-1 hover:bg-gray-100"
                             onClick={() => {
-                              setNewVariant({ ...newVariant, colorName: c.name, colorCode: c.code || newVariant.colorCode });
+                              setNewVariant({ ...newVariant, colorName: name });
                               setColorOptions([]);
                             }}
                           >
-                            <span className="mr-2">{c.name}</span>
-                            {c.code ? <span className="text-xs text-gray-500">{c.code}</span> : null}
+                            <span className="mr-2">{name}</span>
                           </button>
                         ))}
                       </div>

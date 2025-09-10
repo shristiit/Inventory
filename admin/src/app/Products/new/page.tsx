@@ -236,6 +236,8 @@ export default function NewProductPage() {
   // removed color code field
   const [sizeLabel, setSizeLabel] = useState("");
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [sizeOpen, setSizeOpen] = useState(false);
+  const sizePickerRef = useRef<HTMLDivElement | null>(null);
   const [quantity, setQuantity] = useState<number>(0);
   const [location,setLocation] = useState("")
  const [mediaFile, setMediaFile] = useState<File | null>(null);
@@ -285,6 +287,16 @@ export default function NewProductPage() {
       if (mediaPreview) URL.revokeObjectURL(mediaPreview);
     };
   }, [mediaPreview]);
+
+  // Close size dropdown when clicking outside
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (!sizePickerRef.current) return;
+      if (!sizePickerRef.current.contains(e.target as Node)) setSizeOpen(false);
+    }
+    if (sizeOpen) document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [sizeOpen]);
   // Load all colors once for local filtering (autocomplete startsWith)
   useEffect(() => {
     (async () => {
@@ -728,7 +740,18 @@ export default function NewProductPage() {
               <tr>
                 <td className="w-48 align-top p-2 font-medium">Style Number</td>
                 <td className="p-2">
-                  <Input value={styleNumber} onChange={(e) => setStyleNumber(e.target.value)} required placeholder="STY-500010" />
+                  <Input
+                    value={styleNumber}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    onChange={(e) => {
+                      const raw = e.target.value || "";
+                      const digits = raw.replace(/\D/g, "");
+                      setStyleNumber(digits);
+                    }}
+                    placeholder="Auto-assigned if left blank"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">Leave blank to auto-generate. Numbers only if provided.</p>
                 </td>
               </tr>
               <tr>
@@ -878,8 +901,8 @@ export default function NewProductPage() {
         <section className="space-y-4 border rounded p-4">
           <h2 className="font-medium">Add Color and Size</h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
-            <div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-start">
+            <div className="md:col-span-2">
               <Label className="m-2">Color name</Label>
               <div className="relative">
                 <Input
@@ -925,7 +948,7 @@ export default function NewProductPage() {
                   placeholder="Enter Color and press Enter"
                 />
                 {colorSuggestions.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full rounded border bg-white shadow">
+                  <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow max-h-48 overflow-auto">
                     {colorSuggestions.map((c) => (
                       <button
                         type="button"
@@ -941,62 +964,63 @@ export default function NewProductPage() {
                     ))}
                   </div>
                 )}
-                {colorList.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {colorList.map((c, idx) => (
-                      <span key={`${c}-${idx}`} className="inline-flex items-center bg-gray-100 border border-gray-300 rounded-full px-2 py-1 text-xs">
-                        {c}
-                        <button
-                          type="button"
-                          className="ml-2 text-gray-500 hover:text-gray-700"
-                          onClick={() => setColorList((prev) => prev.filter((_, i) => i !== idx))}
-                          aria-label={`Remove ${c}`}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            <div>
-              <Label className="m-2">Size</Label>
-              <select
-                className="w-full h-10 border rounded px-3"
-                value={""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (!v) return;
-                  setSelectedSizes((prev) => (prev.includes(v) ? prev : [...prev, v]));
-                }}
-              >
-                <option value="" disabled>
-                  Select size
-                </option>
-                {PRESET_SIZES.map((sz) => (
-                  <option key={sz} value={sz}>
-                    {sz}
-                  </option>
-                ))}
-              </select>
-              {selectedSizes.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {selectedSizes.map((sz, idx) => (
-                    <span key={`${sz}-${idx}`} className="inline-flex items-center bg-gray-100 border border-gray-300 rounded-full px-2 py-1 text-xs">
-                      {sz}
+                <div className="flex flex-wrap gap-2 mt-2 min-h-6">
+                  {colorList.map((c, idx) => (
+                    <span key={`${c}-${idx}`} className="inline-flex items-center bg-gray-100 border border-gray-300 rounded-full px-2 py-1 text-xs">
+                      {c}
                       <button
                         type="button"
                         className="ml-2 text-gray-500 hover:text-gray-700"
-                        onClick={() => setSelectedSizes((prev) => prev.filter((s) => s !== sz))}
-                        aria-label={`Remove ${sz}`}
+                        onClick={() => setColorList((prev) => prev.filter((_, i) => i !== idx))}
+                        aria-label={`Remove ${c}`}
                       >
                         ×
                       </button>
                     </span>
                   ))}
                 </div>
+              </div>
+            </div>
+            
+            <div className="md:col-span-2">
+              <Label className="m-2">Size</Label>
+              <div ref={sizePickerRef} className="relative">
+                <Input
+                  readOnly
+                  value={selectedSizes.length ? selectedSizes.join(", ") : ""}
+                  onFocus={() => setSizeOpen(true)}
+                  onClick={() => setSizeOpen(true)}
+                  placeholder="Select size(s)"
+                />
+                {sizeOpen && (
+                  <div className="absolute z-20 mt-1 w-full border rounded bg-white shadow p-2 max-h-56 overflow-auto">
+                    <div className="grid grid-cols-3 gap-2">
+                      {PRESET_SIZES.map((sz) => {
+                        const id = `sz-${sz}`;
+                        const checked = selectedSizes.includes(sz);
+                        return (
+                          <label key={sz} htmlFor={id} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              id={id}
+                              type="checkbox"
+                              className="h-4 w-4"
+                              checked={checked}
+                              onChange={(e) => {
+                                setSelectedSizes((prev) =>
+                                  e.target.checked ? (prev.includes(sz) ? prev : [...prev, sz]) : prev.filter((s) => s !== sz)
+                                );
+                              }}
+                            />
+                            <span>{sz}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {selectedSizes.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">Selected: {selectedSizes.join(", ")}</p>
               )}
             </div>
             <div>
@@ -1018,40 +1042,42 @@ export default function NewProductPage() {
                 placeholder="Location"
               />
             </div>
-            <div>
-              <Label>Media</Label>
-              <Input
-                type="file"
-                accept="image/*,video/*"
-                onChange={handleFileMedia}
-              />
+            <div className="md:col-span-2">
+              <Label className="m-2">Media</Label>
+              <div className="flex items-center gap-3">
+                <Input
+                  type="file"
+                  accept="image/*,video/*"
+                  onChange={handleFileMedia}
+                />
+                {/* Compact preview to keep row height small */}
+                {mediaFile && (
+                  <figure className="w-24 text-center">
+                    {mediaFile.type.startsWith("video/") ? (
+                      <video
+                        src={mediaPreview ?? undefined}
+                        className="h-20 w-20 object-cover rounded border"
+                        controls
+                        playsInline
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={mediaPreview ?? undefined}
+                        alt={mediaFile.name}
+                        className="h-20 w-20 object-cover rounded border"
+                      />
+                    )}
+                    <span
+                      className="block mt-1 text-[10px] text-muted-foreground truncate max-w-24"
+                      title={mediaFile.name}
+                    >
+                      {mediaFile.name}
+                    </span>
+                  </figure>
+                )}
+              </div>
             </div>
-             {/* Preview + filename below */}
-              {mediaFile && (
-                <figure className="mt-2 w-32 text-center">
-                  {mediaFile.type.startsWith("video/") ? (
-                    <video
-                      src={mediaPreview ?? undefined}
-                      className="h-24 w-24 object-cover rounded border"
-                      controls
-                      playsInline
-                    />
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={mediaPreview ?? undefined}
-                      alt={mediaFile.name}
-                      className="h-24 w-24 object-cover rounded border"
-                    />
-                  )}
-                  <span
-                    className="block mt-1 text-[10px] text-muted-foreground truncate"
-                    title={mediaFile.name}
-                  >
-                    {mediaFile.name}
-                  </span>
-                </figure>
-              )}
             {/* Quantity input removed in quick add */}
 
             <div className="flex items-end">
