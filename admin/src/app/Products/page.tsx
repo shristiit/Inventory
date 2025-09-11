@@ -86,7 +86,7 @@ type SizeLineItem = {
   dressType?: string;
 };
 
-const ITEMS_PER_PAGE = 15;
+const ITEMS_PER_PAGE = 5;
 
 function formatMinorGBP(pence?: number) {
   if (typeof pence !== "number") return "—";

@@ -39,8 +39,9 @@ r.post('/colors', authGuard, roleAnyGuard('admin', 'staff'), async (req, res) =>
 });
 
 r.get('/sizes', async (req, res) => {
-  const { q = '', limit = '10' } = req.query as any;
-  const rows = await master.searchSizes(String(q), parseInt(String(limit), 10));
+  const { q = '', limit = '10', order = 'asc' } = req.query as any;
+  const ord = String(order).toLowerCase() === 'desc' ? 'desc' : 'asc';
+  const rows = await master.searchSizes(String(q), parseInt(String(limit), 10), ord as 'asc' | 'desc');
   res.json(rows);
 });
 

@@ -47,7 +47,7 @@ export async function searchColors(q: string, limit = 10) {
   return ColorMaster.find(query).sort({ name: 1 }).limit(limit).lean();
 }
 
-export async function searchSizes(q: string, limit = 10) {
+export async function searchSizes(q: string, limit = 10, order: 'asc' | 'desc' = 'asc') {
   const query: any = {};
   if (q && q.trim().length) {
     query.$or = [
@@ -55,7 +55,12 @@ export async function searchSizes(q: string, limit = 10) {
       { slug: { $regex: q.replace(/\s+/g, '-'), $options: 'i' } },
     ];
   }
-  return SizeMaster.find(query).sort({ sortOrder: 1, label: 1 }).limit(limit).lean();
+  const dir = order === 'desc' ? -1 : 1;
+  return SizeMaster.find(query)
+    .collation({ locale: 'en', strength: 2, numericOrdering: true })
+    .sort({ sortOrder: dir, label: dir })
+    .limit(limit)
+    .lean();
 }
 
 export async function upsertCategory(name: string, parentId?: any) {

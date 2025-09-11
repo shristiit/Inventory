@@ -109,6 +109,20 @@ function minorFromPounds(s: string) {
   if (Number.isNaN(n)) return undefined;
   return Math.round(n * 100);
 }
+
+// Ensure media URLs resolve to the backend host when relative
+function toAbsoluteAssetUrl(u?: string): string {
+  if (!u) return '';
+  try {
+    // If already absolute, keep as-is
+    new URL(u);
+    return u;
+  } catch {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    if (u.startsWith('/')) return `${apiBase}${u}`;
+    return `${apiBase}/${u}`;
+  }
+}
 function rand(n = 5) {
   return Math.random().toString(36).slice(-n).toUpperCase();
 }
@@ -824,7 +838,24 @@ export default function ProductDetailsPage() {
             <ul className="mt-2 w-full space-y-1 text-sm">
               {productMedia.map((m, i) => (
                 <li key={(m._id || m.url) + i} className="flex items-center justify-between gap-3 rounded border px-2 py-1">
-                  <span className="truncate">{m.url.split('/').pop()} ({m.type})</span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    {m.type === 'video' ? (
+                      <video
+                        src={toAbsoluteAssetUrl(m.url)}
+                        className="h-12 w-12 rounded object-cover border"
+                        muted
+                        playsInline
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={toAbsoluteAssetUrl(m.url)}
+                        alt={m.url.split('/').pop() || 'media'}
+                        className="h-12 w-12 rounded object-cover border"
+                      />
+                    )}
+                    <span className="truncate">{m.url.split('/').pop()}</span>
+                  </div>
                   <button
                     type="button"
                     className="text-xs px-2 py-0.5 border rounded text-red-600"
@@ -838,7 +869,7 @@ export default function ProductDetailsPage() {
                       }
                     }}
                   >
-                    ×
+                    X
                   </button>
                 </li>
               ))}

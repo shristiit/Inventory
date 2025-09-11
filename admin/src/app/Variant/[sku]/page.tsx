@@ -235,9 +235,7 @@ export default function VariantPage() {
                   <TableCell className="w-48 font-medium">Product</TableCell>
                   <TableCell>
                     {data.product?.title || "—"}
-                    {data.product?.styleNumber && (
-                      <span className="ml-2 text-muted-foreground">(Style: {data.product.styleNumber})</span>
-                    )}
+                    
                   </TableCell>
                 </TableRow>
                 <TableRow><TableCell className="font-medium">SKU</TableCell><TableCell>{data.sku}</TableCell></TableRow>
@@ -254,39 +252,7 @@ export default function VariantPage() {
               </TableBody>
             </Table>
             </div>
-            <div>
-                  <div className="font-medium">Media</div>
-                  <div>
-                    {variantMediaList.length === 0 && productMediaList.length === 0 ? (
-                      <span className="text-muted-foreground">—</span>
-                    ) : (
-                      <div className="flex flex-wrap gap-4">
-                        {(variantMediaList.length ? variantMediaList : productMediaList).slice(0, 4).map((m, i) => {
-                          const name = filenameFromUrl(m.url);
-                          const open = variantMediaList.length ? () => openVariantAt(i) : () => openProductAt(i);
-                          return (
-                            <figure key={m.url + i} className="w-20">
-                              <button type="button" onClick={open} className="block" title="Click to expand">
-                                {m.type === "video" ? (
-                                  <video src={m.url} className="h-16 w-16 rounded border object-cover cursor-zoom-in" muted playsInline />
-                                ) : (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={m.url} alt={name} className="h-16 w-16 rounded border object-cover cursor-zoom-in" />
-                                )}
-                              </button>
-                              <span className="block mt-1 text-[10px] text-muted-foreground truncate" title={name}>
-                                {name}
-                              </span>
-                            </figure>
-                          );
-                        })}
-                        {(variantMediaList.length ? variantMediaList :"").length > 4 && (
-                          <span className="text-xs text-muted-foreground self-center">+{(variantMediaList.length ? variantMediaList : productMediaList).length - 4} more</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
+            
           {/* Sizes */}
           <div className="space-y-2">
             <h2 className="text-lg font-semibold">Sizes & Inventory</h2>
@@ -354,31 +320,7 @@ export default function VariantPage() {
           )}
 
           {/* Product media gallery */}
-          {productMediaList.length > 0 && (
-            <div className="space-y-2">
-              <h2 className="text-lg font-semibold">Product Media</h2>
-              <div className="flex flex-wrap gap-3">
-                {productMediaList.map((m, i) => {
-                  const name = filenameFromUrl(m.url);
-                  return (
-                    <figure key={m.url + i} className="w-28">
-                      <button type="button" onClick={() => openProductAt(i)} className="block" title="Click to expand">
-                        {m.type === "video" ? (
-                          <video src={m.url} className="h-24 w-24 rounded-md object-cover border cursor-zoom-in" muted playsInline />
-                        ) : (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={m.url} alt={name} className="h-24 w-24 rounded-md object-cover border cursor-zoom-in" />
-                        )}
-                      </button>
-                      <span className="block mt-1 text-[10px] text-muted-foreground truncate" title={name}>
-                        {name}
-                      </span>
-                    </figure>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          
 
           {lightbox && (
             <div

@@ -4,7 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev:backend": "pnpm --dir backend dev",
+    "dev:admin": "pnpm --dir admin dev",
+    "dev": "concurrently -n backend,admin -c auto \"pnpm --dir backend dev\" \"pnpm --dir admin dev\""
   },
   "keywords": [],
   "author": "",
@@ -16,6 +19,7 @@
     "tailwindcss": "3.4.4"
   },
   "devDependencies": {
+    "concurrently": "^9.0.1",
     "turbo": "^2.5.5"
   }
 }

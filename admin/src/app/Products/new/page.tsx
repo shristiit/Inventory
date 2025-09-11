@@ -185,6 +185,7 @@ type DraftShape = {
   // quick add mini-form
   colorName: string;
   sizeLabel: string;
+  quantity?: number;
 
   // table
   lines: Line[];
@@ -1122,11 +1123,48 @@ export default function NewProductPage() {
               <Label className="m-2">Size</Label>
               <div ref={sizePickerRef} className="relative">
                 <Input
-                  readOnly
-                  value={selectedSizes.length ? selectedSizes.join(", ") : ""}
+                  value={sizeFilter}
+                  onChange={(e) => { setSizeFilter(e.target.value); setSizeOpen(true); }}
                   onFocus={() => setSizeOpen(true)}
                   onClick={() => setSizeOpen(true)}
-                  placeholder="Select size(s)"
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const raw = sizeFilter.trim();
+                      if (!raw || newSizeSaving) return;
+                      const parts = Array.from(
+                        new Set(
+                          raw
+                            .split(/[\n,]+/)
+                            .map((s) => s.trim())
+                            .filter(Boolean)
+                        )
+                      ).sort((a,b)=>a.toLowerCase().localeCompare(b.toLowerCase()));
+                      if (parts.length === 0) return;
+                      try {
+                        setNewSizeSaving(true);
+                        // Persist each entered size to the backend (best-effort)
+                        await Promise.all(
+                          parts.map(async (label) => {
+                            try { await api.post('/api/masters/sizes?q=S&limit=50"', { label }); } catch {}
+                          })
+                        );
+                        // Update master list and selection locally
+                        setAllSizes((prev) => Array.from(new Set([...(prev || []), ...parts])).sort((a,b)=>a.localeCompare(b)));
+                        setSelectedSizes((prev) => {
+                          const next = Array.from(new Set([...(prev || []), ...parts]));
+                          next.sort((a,b)=>a.localeCompare(b));
+                          return next;
+                        });
+                        setSizeFilter('');
+                      } catch (err) {
+                        console.warn('Failed to save one or more sizes', err);
+                      } finally {
+                        setNewSizeSaving(false);
+                      }
+                    }
+                  }}
+                  placeholder="Type sizes (comma/newline), press Enter to add"
                 />
                 {sizeOpen && (
                   <div className="absolute z-20 mt-1 w-full border rounded bg-white shadow p-2 max-h-64 overflow-auto">
@@ -1179,54 +1217,6 @@ export default function NewProductPage() {
                   ))}
                 </div>
               )}
-              {/* Add a new size (creates in SizeMaster and selects it) */}
-              <div className="mt-2 flex items-center gap-2">
-                <Input
-                  value={newSizeLabel}
-                  onChange={(e) => setNewSizeLabel(e.target.value)}
-                  placeholder="Add new size (e.g., XXL or EU 42)"
-                  onKeyDown={async (e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const val = newSizeLabel.trim();
-                      if (!val || newSizeSaving) return;
-                      try {
-                        setNewSizeSaving(true);
-                        await api.post('/api/masters/sizes', { label: val });
-                        // Update master list and select it
-                        setAllSizes((prev) => Array.from(new Set([...(prev || []), val])).sort((a,b)=>a.localeCompare(b)));
-                        setSelectedSizes((prev) => (prev.includes(val) ? prev : [...prev, val]));
-                        setNewSizeLabel('');
-                      } catch (err) {
-                        console.warn('Failed to save size', err);
-                      } finally {
-                        setNewSizeSaving(false);
-                      }
-                    }
-                  }}
-                />
-                <Button
-                  type="button"
-                  disabled={newSizeSaving || !newSizeLabel.trim()}
-                  onClick={async () => {
-                    const val = newSizeLabel.trim();
-                    if (!val || newSizeSaving) return;
-                    try {
-                      setNewSizeSaving(true);
-                      await api.post('/api/masters/sizes', { label: val });
-                      setAllSizes((prev) => Array.from(new Set([...(prev || []), val])).sort((a,b)=>a.localeCompare(b)));
-                      setSelectedSizes((prev) => (prev.includes(val) ? prev : [...prev, val]));
-                      setNewSizeLabel('');
-                    } catch (err) {
-                      console.warn('Failed to save size', err);
-                    } finally {
-                      setNewSizeSaving(false);
-                    }
-                  }}
-                >
-                  {newSizeSaving ? 'Saving…' : 'Add'}
-                </Button>
-              </div>
             </div>
             <div>
               <Label className="m-2">Quantity</Label>
