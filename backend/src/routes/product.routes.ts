@@ -17,21 +17,25 @@ r.get('/variants/by-sku/:sku', ctrl.getVariantBySku);
 r.get('/variants/:variantId', ctrl.getVariantDeep);
 // Read-only variant media
 r.get('/variants/:variantId/media', ctrl.getVariantMedia);
+// Delete a single variant media item
+r.delete('/variants/:variantId/media/:mediaId', authGuard, roleAnyGuard('admin', 'staff'), ctrl.deleteVariantMedia);
 
-// Variant CRUD (admin only)
-r.post('/:id/variants', authGuard, roleGuard('admin'), ctrl.addVariant);
-r.patch('/variants/:variantId', authGuard, roleGuard('admin'), ctrl.updateVariant);
+// Variant CRUD (admin or staff for add/update; delete remains admin)
+r.post('/:id/variants', authGuard, roleAnyGuard('admin', 'staff'), ctrl.addVariant);
+r.patch('/variants/:variantId', authGuard, roleAnyGuard('admin', 'staff'), ctrl.updateVariant);
 r.delete('/variants/:variantId', authGuard, roleGuard('admin'), ctrl.deleteVariantCascadeArchive);
 
-// Sizes CRUD (admin only)
-r.post('/variants/:variantId/sizes', authGuard, roleGuard('admin'), ctrl.addSize);
-r.patch('/sizes/:sizeId', authGuard, roleGuard('admin'), ctrl.updateSize);
+// Sizes CRUD (admin or staff for add/update; delete remains admin)
+r.post('/variants/:variantId/sizes', authGuard, roleAnyGuard('admin', 'staff'), ctrl.addSize);
+r.patch('/sizes/:sizeId', authGuard, roleAnyGuard('admin', 'staff'), ctrl.updateSize);
 r.delete('/sizes/:sizeId', authGuard, roleGuard('admin'), ctrl.deleteSizeArchive);
 
 // Product updates / status / deep read / delete (keep AFTER variant routes)
 r.get('/:id', ctrl.getProductDeep);
 // Read-only product media
 r.get('/:id/media', ctrl.getProductMedia);
+// Delete a single product media item
+r.delete('/:id/media/:mediaId', authGuard, roleAnyGuard('admin', 'staff'), ctrl.deleteProductMedia);
 r.patch('/:id', authGuard, roleGuard('admin'), ctrl.updateProduct);
 r.post('/:id/status', authGuard, roleGuard('admin'), ctrl.setProductStatus);
 r.delete('/:id', authGuard, roleGuard('admin'), ctrl.deleteProductCascadeArchive);

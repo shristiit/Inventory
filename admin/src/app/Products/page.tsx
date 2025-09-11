@@ -296,41 +296,36 @@ export default function ProductsPage() {
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 bg-white shadow-lg rounded-xl border border-gray-200">
       <div className="flex items-center justify-between gap-3 flex-wrap md:flex-nowrap">
-        <h1 className="text-2xl font-bold mb-2 md:mb-6">Products — Size</h1>
-        <div className="w-full md:w-auto flex flex-col md:flex-row md:items-center md:justify-end gap-2 mb-4">
-          <Input
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search Product, Style, SKU, Size, Barcode"
-            className="w-full md:w-72"
-          />
-          <select
-            className="h-10 border rounded px-3 w-full md:w-auto"
-            value={dressFilter}
-            onChange={(e) => setDressFilter(e.target.value)}
-          >
-            <option value="">All Dress Types</option>
-            {DRESS_TYPES.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-          <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
+        <h1 className="text-2xl font-bold mb-2 md:mb-6">Products</h1>
+        <div className="flex flex-col md:flex-row md:items-center md:gap-3 mb-4">
+          <div className="flex-1 flex flex-col md:flex-row md:items-center gap-2">
+            <Input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search Product, Style, SKU, Size, Barcode"
+              className="w-full md:w-72"
+            />
+            <select
+              className="h-10 border rounded px-3 w-full md:w-auto"
+              value={dressFilter}
+              onChange={(e) => setDressFilter(e.target.value)}
+            >
+              <option value="">All Dress Types</option>
+              {DRESS_TYPES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2 mt-2 md:mt-0">
             <Button
-              className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all w-full md:w-auto"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all"
               onClick={() => router.push("/Products/new")}
             >
               <Plus className="mr-2 h-4 w-4" />
               Create product
             </Button>
-            <Button
-              className="hidden md:inline-flex"
-              onClick={() => router.push("/Products/draft")}
-            >
-              Draft
-            </Button>
-            <Button variant="outline" className="w-full md:w-auto" onClick={() => fetchPage(page)}>
-              Refresh
-            </Button>
+            <Button onClick={() => router.push("/Products/draft")}>Draft</Button>
+            <Button variant="outline" onClick={() => fetchPage(page)}>Refresh</Button>
           </div>
         </div>
       </div>

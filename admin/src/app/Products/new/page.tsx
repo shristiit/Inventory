@@ -252,6 +252,7 @@ export default function NewProductPage() {
   // removed color code field
   const [sizeLabel, setSizeLabel] = useState("");
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [sizeFilter, setSizeFilter] = useState("");
   const [sizeOpen, setSizeOpen] = useState(false);
   const sizePickerRef = useRef<HTMLDivElement | null>(null);
   const [quantity, setQuantity] = useState<number>(0);
@@ -1139,34 +1140,60 @@ export default function NewProductPage() {
                   placeholder="Select size(s)"
                 />
                 {sizeOpen && (
-                  <div className="absolute z-20 mt-1 w-full border rounded bg-white shadow p-2 max-h-56 overflow-auto">
-                    <div className="grid grid-cols-3 gap-2">
-                      {[...new Set([...PRESET_SIZES, ...allSizes])].map((sz) => {
-                        const id = `sz-${sz}`;
-                        const checked = selectedSizes.includes(sz);
-                        return (
-                          <label key={sz} htmlFor={id} className="flex items-center gap-2 text-sm cursor-pointer">
-                            <input
-                              id={id}
-                              type="checkbox"
-                              className="h-4 w-4"
-                              checked={checked}
-                              onChange={(e) => {
-                                setSelectedSizes((prev) =>
-                                  e.target.checked ? (prev.includes(sz) ? prev : [...prev, sz]) : prev.filter((s) => s !== sz)
-                                );
-                              }}
-                            />
-                            <span>{sz}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
+                  <div className="absolute z-20 mt-1 w-full border rounded bg-white shadow p-2 max-h-64 overflow-auto">
+                    {allSizes.length === 0 ? (
+                      <div className="text-sm text-gray-500 px-1 py-2">No sizes loaded from backend.</div>
+                    ) : (
+                      <>
+                        <Input
+                          value={sizeFilter}
+                          onChange={(e) => setSizeFilter(e.target.value)}
+                          placeholder="Filter sizes…"
+                          className="mb-2 h-8 text-sm"
+                        />
+                        <div className="grid grid-cols-3 gap-2">
+                          {allSizes.filter((s) => s.toLowerCase().includes(sizeFilter.toLowerCase())).map((sz) => {
+                            const id = `sz-${sz}`;
+                            const checked = selectedSizes.includes(sz);
+                            return (
+                              <label key={sz} htmlFor={id} className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input
+                                  id={id}
+                                  type="checkbox"
+                                  className="h-4 w-4"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    setSelectedSizes((prev) =>
+                                      e.target.checked ? (prev.includes(sz) ? prev : [...prev, sz]) : prev.filter((s) => s !== sz)
+                                    );
+                                  }}
+                                />
+                                <span>{sz}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
               {selectedSizes.length > 0 && (
-                <p className="text-xs text-muted-foreground mt-1">Selected: {selectedSizes.join(", ")}</p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {selectedSizes.map((sz, idx) => (
+                    <span key={`${sz}-${idx}`} className="inline-flex items-center bg-gray-100 border border-gray-300 rounded-full px-2 py-1 text-xs">
+                      {sz}
+                      <button
+                        type="button"
+                        className="ml-2 text-gray-500 hover:text-gray-700"
+                        onClick={() => setSelectedSizes((prev) => prev.filter((_, i) => i !== idx))}
+                        aria-label={`Remove ${sz}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
               )}
               {/* Add a new size (creates in SizeMaster and selects it) */}
               <div className="mt-2 flex items-center gap-2">
@@ -1236,102 +1263,11 @@ export default function NewProductPage() {
                 placeholder="Location"
               />
             </div>
-            <div className="md:col-span-2">
-              <Label className="m-2">Media</Label>
-              <div className="grid items-center gap-3">
-                <Input
-                  type="file"
-                  accept="image/*,video/*"
-                  multiple
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files || []);
-                    if (!files.length) return;
-                    // Add to selected color(s) (variant-level), allowing multiple per color
-                    const targets = colorList.length ? colorList : (colorName.trim() ? [colorName] : []);
-                    if (targets.length) {
-                      const normTargets = targets.map((c) => normColor(c));
-                      setColorMedia((prev) => {
-                        const next = { ...prev } as Record<string, File[]>;
-                        normTargets.forEach((key) => {
-                          next[key] = [ ...(next[key] || []), ...files ];
-                        });
-                        return next;
-                      });
-                      setColorMediaPreviews((prev) => {
-                        const next = { ...prev } as Record<string, string[]>;
-                        const urls = files.map((f) => URL.createObjectURL(f));
-                        normTargets.forEach((key) => {
-                          next[key] = [ ...(next[key] || []), ...urls ];
-                        });
-                        return next;
-                      });
-                    }
-                    // reset input to allow re-selecting the same file again
-                    e.currentTarget.value = '';
-                  }}
-                />
-              </div>
-              {(() => {
-                const targets = colorList.length ? colorList : (colorName.trim() ? [colorName.trim()] : []);
-                if (!targets.length) {
-                  return <p className="mt-2 text-[11px] text-muted-foreground">Select or enter a color to attach media.</p>;
-                }
-                // Build a unified, de-duplicated file list across selected colors
-                const normTargets = targets.map((c) => normColor(c));
-                const unifiedFiles: File[] = Array.from(
-                  new Set(
-                    normTargets.flatMap((key) => (colorMedia[key] || []))
-                  )
-                );
-                if (unifiedFiles.length === 0) return null;
-                return (
-                  <ul className="mt-2 w-full text-sm flex flex-wrap gap-2">
-                    {unifiedFiles.map((f, idx) => (
-                      <li key={`${f.name}-${f.size}-${idx}`} className="flex items-center gap-2 rounded border px-2 py-1">
-                        <span className="truncate max-w-[200px]" title={f.name}>
-                          {f.name} {f.type ? `(${f.type.split('/')[0]})` : ''} · {humanFileSize(f.size)}
-                        </span>
-                        <button
-                          type="button"
-                          className="text-xs px-2 py-0.5 border rounded"
-                          onClick={() => {
-                            // Remove this file from all selected colors
-                            setColorMedia((prev) => {
-                              const next = { ...prev } as Record<string, File[]>;
-                              normTargets.forEach((key) => {
-                                next[key] = (next[key] || []).filter((file) => file !== f);
-                              });
-                              return next;
-                            });
-                            setColorMediaPreviews((prev) => {
-                              const next = { ...prev } as Record<string, string[]>;
-                              normTargets.forEach((key) => {
-                                // remove corresponding preview by index match
-                                const files = colorMedia[key] || [];
-                                const idxInColor = files.findIndex((file) => file === f);
-                                if (idxInColor >= 0) {
-                                  const url = (next[key] || [])[idxInColor];
-                                  next[key] = (next[key] || []).filter((_, i) => i !== idxInColor);
-                                  if (url) { try { URL.revokeObjectURL(url); } catch {} }
-                                }
-                              });
-                              return next;
-                            });
-                          }}
-                          aria-label={`Remove ${f.name}`}
-                        >
-                          Remove
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                );
-              })()}
-            </div>
+            {/* Removed quick Media; use per-line Media in the table below */}
             {/* Quantity input removed in quick add */}
 
             <div className="flex items-end">
-              <Button className="ml-2" type="button" onClick={addLine}>
+              <Button className="mt-7" type="button" onClick={addLine}>
                 Add
               </Button>
             </div>
@@ -1353,6 +1289,7 @@ export default function NewProductPage() {
                   <th className="text-left p-2">Color</th>
                   <th className="text-left p-2">Size</th>
                   <th className="text-left p-2">Quantity</th>
+                  <th className="text-left p-2">Media</th>
                   <th className="text-right p-2">Actions</th>
                 </tr>
               </thead>
@@ -1417,6 +1354,31 @@ export default function NewProductPage() {
                             ln.quantity
                           )}
                           </td>
+                        {/* Per-line media for this color */}
+                        <td className="p-2 align-middle">
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="file"
+                              accept="image/*,video/*"
+                              multiple
+                              onChange={(e) => {
+                                const files = Array.from(e.target.files || []);
+                                if (!files.length) return;
+                                const key = normColor(ln.colorName);
+                                setColorMedia((prev) => ({ ...prev, [key]: [ ...(prev[key] || []), ...files ] }));
+                                const urls = files.map((f) => URL.createObjectURL(f));
+                                setColorMediaPreviews((prev) => ({ ...prev, [key]: [ ...(prev[key] || []), ...urls ] }));
+                                e.currentTarget.value = '';
+                              }}
+                            />
+                            {(() => {
+                              const key = normColor(ln.colorName);
+                              const count = (colorMedia[key] || []).length;
+                              return count ? <span className="text-xs text-gray-600">{count} file{count>1?'s':''}</span> : null;
+                            })()}
+                          </div>
+                        </td>
+
                         {/* Actions */}
                         <td className="p-2 flex justify-end align-middle text-right">
                           {isEdit ? (

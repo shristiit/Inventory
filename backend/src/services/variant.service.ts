@@ -185,3 +185,11 @@ export async function addMedia(
     { new: true }
   ).lean();
 }
+
+export async function removeMedia(variantId: string, mediaId: string, adminId: any) {
+  return Variant.findByIdAndUpdate(
+    variantId,
+    { $pull: { media: { _id: mediaId as any } }, $set: { updatedBy: adminId } },
+    { new: true }
+  ).lean();
+}

@@ -160,3 +160,21 @@ export const addProductMedia: RequestHandler = asyncHandler(async (req: Request,
   const updated = await productSvc.addProductMedia(id, items, actorId);
   return res.status(201).json({ media: items, product: updated });
 });
+
+// Delete single media from variant
+export const deleteVariantMedia: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+  const actorId = req.user?._id ?? null;
+  const { variantId, mediaId } = req.params as { variantId: string; mediaId: string };
+  const updated = await variantSvc.removeMedia(variantId, mediaId, actorId);
+  if (!updated) return res.status(404).json({ message: 'Variant not found' });
+  return res.status(200).json({ variant: updated });
+});
+
+// Delete single media from product
+export const deleteProductMedia: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+  const actorId = req.user?._id ?? null;
+  const { id, mediaId } = req.params as { id: string; mediaId: string };
+  const updated = await productSvc.removeProductMedia(id, mediaId, actorId);
+  if (!updated) return res.status(404).json({ message: 'Product not found' });
+  return res.status(200).json({ product: updated });
+});
