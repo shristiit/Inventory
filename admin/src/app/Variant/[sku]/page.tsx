@@ -93,7 +93,7 @@ export default function VariantPage() {
   const [data, setData] = useState<VariantDeep | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [lightbox, setLightbox] = useState<{ group: 'variant' | 'product'; index: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,24 +131,14 @@ export default function VariantPage() {
     } catch { return data.updatedAt; }
   }, [data?.updatedAt]);
 
-  /**
-   * Normalize media from:
-   * - variant.media: (MediaItem|string)[]
-   * - variant.images: string[]
-   * - product.media: (MediaItem|string)[]
-   * - product.images: string[]
-   */
-  const mediaList = useMemo<MediaItem[]>(() => {
+  // Build separate lists for variant and product media
+  const variantMediaList = useMemo<MediaItem[]>(() => {
     const raw: Array<MediaItem | string> = [];
-
-    if (Array.isArray(data?.media)) raw.push(...data!.media!);
-    if (Array.isArray(data?.images)) raw.push(...data!.images!);
-    if (Array.isArray(data?.product?.media)) raw.push(...(data!.product!.media!));
-    if (Array.isArray(data?.product?.images)) raw.push(...(data!.product!.images!));
-
+    if (Array.isArray(data?.media)) raw.push(...(data!.media!));
+    if (Array.isArray(data?.images)) raw.push(...(data!.images!));
     const normalized: MediaItem[] = raw
       .map((m) => {
-        if (typeof m === "string") {
+        if (typeof m === 'string') {
           const abs = toAbsoluteAssetUrl(m);
           return abs ? { url: abs, type: guessTypeFromUrl(abs) } : null;
         }
@@ -157,32 +147,58 @@ export default function VariantPage() {
         return { url: abs, type: m.type || guessTypeFromUrl(abs), isPrimary: m.isPrimary };
       })
       .filter(Boolean) as MediaItem[];
-
-    // dedupe by URL and primary first
     const uniq = new Map<string, MediaItem>();
     normalized.forEach((m) => uniq.set(m.url, m));
-    return Array.from(uniq.values()).sort(
-      (a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0)
-    );
-  }, [data]);
+    return Array.from(uniq.values()).sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
+  }, [data?.media, data?.images]);
 
-  const openAt = (i: number) => {
-    if (i >= 0 && i < mediaList.length) setLightboxIndex(i);
+  const productMediaList = useMemo<MediaItem[]>(() => {
+    const raw: Array<MediaItem | string> = [];
+    if (Array.isArray(data?.product?.media)) raw.push(...(data!.product!.media!));
+    if (Array.isArray(data?.product?.images)) raw.push(...(data!.product!.images!));
+    const normalized: MediaItem[] = raw
+      .map((m) => {
+        if (typeof m === 'string') {
+          const abs = toAbsoluteAssetUrl(m);
+          return abs ? { url: abs, type: guessTypeFromUrl(abs) } : null;
+        }
+        const mm = m as MediaItem;
+        const abs = toAbsoluteAssetUrl(mm.url);
+        if (!abs) return null;
+        return { url: abs, type: mm.type || guessTypeFromUrl(abs), isPrimary: mm.isPrimary };
+      })
+      .filter(Boolean) as MediaItem[];
+    const uniq = new Map<string, MediaItem>();
+    normalized.forEach((m) => uniq.set(m.url, m));
+    return Array.from(uniq.values());
+  }, [data?.product?.media, data?.product?.images]);
+
+  const openVariantAt = (i: number) => {
+    if (i >= 0 && i < variantMediaList.length) setLightbox({ group: 'variant', index: i });
   };
-  const closeLightbox = () => setLightboxIndex(null);
-  const nextLightbox = () =>
-    setLightboxIndex((idx) =>
-      idx == null ? null : (idx + 1) % Math.max(mediaList.length, 1)
-    );
-  const prevLightbox = () =>
-    setLightboxIndex((idx) =>
-      idx == null
-        ? null
-        : (idx - 1 + Math.max(mediaList.length, 1)) % Math.max(mediaList.length, 1)
-    );
+  const openProductAt = (i: number) => {
+    if (i >= 0 && i < productMediaList.length) setLightbox({ group: 'product', index: i });
+  };
+  const closeLightbox = () => setLightbox(null);
+  const nextLightbox = () => {
+    setLightbox((lb) => {
+      if (!lb) return lb;
+      const arr = lb.group === 'variant' ? variantMediaList : productMediaList;
+      const next = (lb.index + 1) % Math.max(arr.length, 1);
+      return { ...lb, index: next };
+    });
+  };
+  const prevLightbox = () => {
+    setLightbox((lb) => {
+      if (!lb) return lb;
+      const arr = lb.group === 'variant' ? variantMediaList : productMediaList;
+      const prev = (lb.index - 1 + Math.max(arr.length, 1)) % Math.max(arr.length, 1);
+      return { ...lb, index: prev };
+    });
+  };
 
   useEffect(() => {
-    if (lightboxIndex == null) return;
+    if (!lightbox) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeLightbox();
       else if (e.key === "ArrowRight") nextLightbox();
@@ -190,7 +206,7 @@ export default function VariantPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [lightboxIndex, mediaList.length]);
+  }, [lightbox, variantMediaList.length, productMediaList.length]);
 
   return (
     <div className="p-6 space-y-6">
@@ -242,41 +258,27 @@ export default function VariantPage() {
                 <TableRow>
                   
                 </TableRow>
-                <TableRow><TableCell className="font-medium">Price</TableCell><TableCell>{priceGBP}</TableCell></TableRow>
                 <TableRow><TableCell className="font-medium">Updated</TableCell><TableCell>{updated}</TableCell></TableRow>
 
-                {/* Media thumbnails in overview with filename captions */}
+                {/* Media thumbnails in overview with filename captions (prefer variant; fallback to product) */}
                 <TableRow>
                   <TableCell className="font-medium">Media</TableCell>
                   <TableCell>
-                    {mediaList.length === 0 ? (
+                    {variantMediaList.length === 0 && productMediaList.length === 0 ? (
                       <span className="text-muted-foreground">—</span>
                     ) : (
                       <div className="flex flex-wrap gap-3">
-                        {mediaList.slice(0, 4).map((m, i) => {
+                        {(variantMediaList.length ? variantMediaList : productMediaList).slice(0, 4).map((m, i) => {
                           const name = filenameFromUrl(m.url);
+                          const open = variantMediaList.length ? () => openVariantAt(i) : () => openProductAt(i);
                           return (
                             <figure key={m.url + i} className="w-20">
-                              <button
-                                type="button"
-                                onClick={() => openAt(i)}
-                                className="block"
-                                title="Click to expand"
-                              >
+                              <button type="button" onClick={open} className="block" title="Click to expand">
                                 {m.type === "video" ? (
-                                  <video
-                                    src={m.url}
-                                    className="h-16 w-16 rounded border object-cover cursor-zoom-in"
-                                    muted
-                                    playsInline
-                                  />
+                                  <video src={m.url} className="h-16 w-16 rounded border object-cover cursor-zoom-in" muted playsInline />
                                 ) : (
                                   // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={m.url}
-                                    alt={name}
-                                    className="h-16 w-16 rounded border object-cover cursor-zoom-in"
-                                  />
+                                  <img src={m.url} alt={name} className="h-16 w-16 rounded border object-cover cursor-zoom-in" />
                                 )}
                               </button>
                               <span className="block mt-1 text-[10px] text-muted-foreground truncate" title={name}>
@@ -285,8 +287,8 @@ export default function VariantPage() {
                             </figure>
                           );
                         })}
-                        {mediaList.length > 4 && (
-                          <span className="text-xs text-muted-foreground self-center">+{mediaList.length - 4} more</span>
+                        {(variantMediaList.length ? variantMediaList :"").length > 4 && (
+                          <span className="text-xs text-muted-foreground self-center">+{(variantMediaList.length ? variantMediaList : productMediaList).length - 4} more</span>
                         )}
                       </div>
                     )}
@@ -337,35 +339,21 @@ export default function VariantPage() {
             )}
           </div>
 
-          {/* Full media gallery with filename captions */}
-          {mediaList.length > 0 && (
+          {/* Variant media gallery */}
+          {variantMediaList.length > 0 && (
             <div className="space-y-2">
-              <h2 className="text-lg font-semibold">Media</h2>
+              <h2 className="text-lg font-semibold">Color Media</h2>
               <div className="flex flex-wrap gap-3">
-                {mediaList.map((m, i) => {
+                {variantMediaList.map((m, i) => {
                   const name = filenameFromUrl(m.url);
                   return (
                     <figure key={m.url + i} className="w-28">
-                      <button
-                        type="button"
-                        onClick={() => openAt(i)}
-                        className="block"
-                        title="Click to expand"
-                      >
+                      <button type="button" onClick={() => openVariantAt(i)} className="block" title="Click to expand">
                         {m.type === "video" ? (
-                          <video
-                            src={m.url}
-                            className="h-24 w-24 rounded-md object-cover border cursor-zoom-in"
-                            muted
-                            playsInline
-                          />
+                          <video src={m.url} className="h-24 w-24 rounded-md object-cover border cursor-zoom-in" muted playsInline />
                         ) : (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={m.url}
-                            alt={name}
-                            className="h-24 w-24 rounded-md object-cover border cursor-zoom-in"
-                          />
+                          <img src={m.url} alt={name} className="h-24 w-24 rounded-md object-cover border cursor-zoom-in" />
                         )}
                       </button>
                       <span className="block mt-1 text-[10px] text-muted-foreground truncate" title={name}>
@@ -378,7 +366,34 @@ export default function VariantPage() {
             </div>
           )}
 
-          {lightboxIndex != null && mediaList[lightboxIndex] && (
+          {/* Product media gallery */}
+          {productMediaList.length > 0 && (
+            <div className="space-y-2">
+              <h2 className="text-lg font-semibold">Product Media</h2>
+              <div className="flex flex-wrap gap-3">
+                {productMediaList.map((m, i) => {
+                  const name = filenameFromUrl(m.url);
+                  return (
+                    <figure key={m.url + i} className="w-28">
+                      <button type="button" onClick={() => openProductAt(i)} className="block" title="Click to expand">
+                        {m.type === "video" ? (
+                          <video src={m.url} className="h-24 w-24 rounded-md object-cover border cursor-zoom-in" muted playsInline />
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={m.url} alt={name} className="h-24 w-24 rounded-md object-cover border cursor-zoom-in" />
+                        )}
+                      </button>
+                      <span className="block mt-1 text-[10px] text-muted-foreground truncate" title={name}>
+                        {name}
+                      </span>
+                    </figure>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {lightbox && (
             <div
               className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
               onClick={closeLightbox}
@@ -391,7 +406,10 @@ export default function VariantPage() {
               >
                 ×
               </button>
-              {mediaList.length > 1 && (
+              {(() => {
+                const arr = lightbox.group === 'variant' ? variantMediaList : productMediaList;
+                return arr.length > 1;
+              })() && (
                 <>
                   <button
                     type="button"
@@ -416,13 +434,14 @@ export default function VariantPage() {
                 onClick={(e) => e.stopPropagation()}
               >
                 {(() => {
-                  const m = mediaList[lightboxIndex!];
-                  const name = filenameFromUrl(m.url);
+                  const arr = lightbox.group === 'variant' ? variantMediaList : productMediaList;
+                  const m = arr[lightbox.index];
+                  const name = m ? filenameFromUrl(m.url) : '';
                   return (
                     <div className="flex flex-col items-center gap-2">
-                      {m.type === "video" ? (
+                      {m?.type === "video" ? (
                         <video
-                          src={m.url}
+                          src={m?.url}
                           className="max-h-[80vh] max-w-[90vw] rounded shadow"
                           controls
                           autoPlay
@@ -431,7 +450,7 @@ export default function VariantPage() {
                       ) : (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={m.url}
+                          src={m?.url}
                           alt={name}
                           className="max-h-[80vh] max-w-[90vw] rounded shadow"
                         />

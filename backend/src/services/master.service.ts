@@ -25,7 +25,8 @@ export async function upsertColor(name: string, code?: string) {
 export async function upsertSize(label: string) {
   const slug = slugify(label);
   if (!slug) throw new Error('Size label required');
-  const update: any = { label, isActive: true, slug };
+  // Avoid updating the same path in both $set and $setOnInsert
+  const update: any = { isActive: true, slug };
   const doc = await SizeMaster.findOneAndUpdate(
     { $or: [{ slug }, { label }] },
     { $setOnInsert: { label }, $set: update },

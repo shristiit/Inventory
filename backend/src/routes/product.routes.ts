@@ -15,6 +15,8 @@ r.get('/', ctrl.listProducts);
 // ---- Variant reads must come BEFORE '/:id' so they don't get shadowed ----
 r.get('/variants/by-sku/:sku', ctrl.getVariantBySku);
 r.get('/variants/:variantId', ctrl.getVariantDeep);
+// Read-only variant media
+r.get('/variants/:variantId/media', ctrl.getVariantMedia);
 
 // Variant CRUD (admin only)
 r.post('/:id/variants', authGuard, roleGuard('admin'), ctrl.addVariant);
@@ -28,6 +30,8 @@ r.delete('/sizes/:sizeId', authGuard, roleGuard('admin'), ctrl.deleteSizeArchive
 
 // Product updates / status / deep read / delete (keep AFTER variant routes)
 r.get('/:id', ctrl.getProductDeep);
+// Read-only product media
+r.get('/:id/media', ctrl.getProductMedia);
 r.patch('/:id', authGuard, roleGuard('admin'), ctrl.updateProduct);
 r.post('/:id/status', authGuard, roleGuard('admin'), ctrl.setProductStatus);
 r.delete('/:id', authGuard, roleGuard('admin'), ctrl.deleteProductCascadeArchive);

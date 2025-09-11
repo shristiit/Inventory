@@ -44,4 +44,25 @@ r.get('/sizes', async (req, res) => {
   res.json(rows);
 });
 
+// Create or update a size in SizeMaster
+r.post('/sizes', authGuard, roleAnyGuard('admin', 'staff'), async (req, res) => {
+  try {
+    const { label, sortOrder } = req.body || {};
+    if (!label || !String(label).trim()) {
+      return res.status(400).json({ message: 'Size label is required' });
+    }
+    const doc = await master.upsertSize(String(label).trim());
+    // Optionally update sortOrder if provided
+    if (typeof sortOrder === 'number') {
+      const SizeMaster = (await import('../models/sizeMaster.model')).default;
+      await SizeMaster.updateOne({ _id: doc?._id }, { $set: { sortOrder } });
+      const updated = await SizeMaster.findById(doc?._id).lean();
+      return res.status(201).json(updated);
+    }
+    res.status(201).json(doc);
+  } catch (e: any) {
+    res.status(500).json({ message: e?.message || 'Failed to save size' });
+  }
+});
+
 export default r;

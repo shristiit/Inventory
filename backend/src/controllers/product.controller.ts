@@ -2,14 +2,43 @@ import { Request, Response } from 'express';
 import type { RequestHandler } from 'express';
 import * as productSvc from '../services/product.service';
 import * as variantSvc from '../services/variant.service';
+import Product from '../models/product.model';
+import Variant from '../models/variant.model';
 import * as sizeSvc from '../services/size.service';
 import asyncHandler from '../utils/asyncHandler';
 
 // Products
 export const createProductDeep = asyncHandler(async (req: Request, res: Response) => {
   const adminId = req.user?._id ?? null;
-  const created = await productSvc.createDeep(req.body, adminId);
-  res.status(201).json(created);
+  try {
+    const created = await productSvc.createDeep(req.body, adminId);
+    return res.status(201).json(created);
+  } catch (e: any) {
+    if (e?.code === 11000) {
+      // Duplicate key (likely variant SKU unique index)
+      const key = e?.keyValue ? JSON.stringify(e.keyValue) : 'duplicate key';
+      return res.status(409).json({
+        message: 'Duplicate key',
+        detail: `A unique key already exists: ${key}. Ensure each variant SKU is unique.`,
+      });
+    }
+    throw e;
+  }
+});
+
+// Read-only media endpoints
+export const getProductMedia: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params as { id: string };
+  const doc = await Product.findById(id).select('media').lean();
+  if (!doc) return res.status(404).json({ message: 'Not found' });
+  return res.json(doc.media ?? []);
+});
+
+export const getVariantMedia: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { variantId } = req.params as { variantId: string };
+  const doc = await Variant.findById(variantId).select('media').lean();
+  if (!doc) return res.status(404).json({ message: 'Variant not found' });
+  return res.json(doc.media ?? []);
 });
 
 export const listProducts = asyncHandler(async (req: Request, res: Response) => {

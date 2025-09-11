@@ -273,6 +273,9 @@ export default function NewProductPage() {
   const colorPickerRef = useRef<HTMLDivElement | null>(null);
   const [colorFilter, setColorFilter] = useState("");
   const [sizeSuggestions, setSizeSuggestions] = useState<Array<{ _id: string; label: string }>>([]);
+  const [allSizes, setAllSizes] = useState<string[]>([]);
+  const [newSizeLabel, setNewSizeLabel] = useState("");
+  const [newSizeSaving, setNewSizeSaving] = useState(false);
   const [categorySuggestions, setCategorySuggestions] = useState<Array<{ _id: string; name: string }>>([]);
   const [subcategorySuggestions, setSubcategorySuggestions] = useState<Array<{ _id: string; name: string }>>([]);
   const [allCategories, setAllCategories] = useState<string[]>([]);
@@ -357,6 +360,26 @@ export default function NewProductPage() {
     if (colorOpen) document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [colorOpen]);
+
+  // Load all sizes once to populate the size picker from master
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get(`/api/masters/sizes`, { params: { q: '', limit: 1000 } });
+        const labels: string[] = Array.isArray(data)
+          ? Array.from(new Set(
+              data
+                .map((s: any) => (typeof s === 'string' ? s : s?.label))
+                .filter((n: any) => typeof n === 'string' && n.trim().length)
+            ))
+              .sort((a, b) => a.localeCompare(b))
+          : [];
+        setAllSizes(labels);
+      } catch {
+        setAllSizes([]);
+      }
+    })();
+  }, []);
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
@@ -739,14 +762,28 @@ export default function NewProductPage() {
 
       // Upload variant-level media grouped by color (if any)
       try {
-        const createdVariants: Array<{ _id: string; color?: { name?: string } }> = created?.variants || [];
+        let createdVariants: Array<{ _id: string; color?: { name?: string } }> = created?.variants || [];
+        if (!Array.isArray(createdVariants) || createdVariants.length === 0) {
+          // Fallback: fetch product deep to get variants
+          try {
+            const { data: deep } = await api.get(`/api/products/${productId}`);
+            createdVariants = deep?.variants || [];
+          } catch {}
+        }
         const mapByColor = new Map<string, string>(); // norm color -> variantId
+        const mapBySku = new Map<string, string>();   // sku -> variantId
         createdVariants.forEach((v) => {
           const key = normColor(v?.color?.name || "");
           if (key) mapByColor.set(key, v._id);
+          if ((v as any)?.sku) mapBySku.set(String((v as any).sku), v._id);
         });
         for (const [key, files] of Object.entries(colorMedia)) {
-          const variantId = mapByColor.get(normColor(key));
+          let variantId = mapByColor.get(normColor(key));
+          if (!variantId) {
+            // Try resolve by expected SKU if color is missing from response
+            const expectedSku = `${tokenize(styleNumber)}-${skuSuffixFromColor(key)}`;
+            variantId = mapBySku.get(expectedSku);
+          }
           if (!variantId || !files?.length) continue;
           const fd = new FormData();
           files.forEach((f) => fd.append('files', f));
@@ -1046,31 +1083,6 @@ export default function NewProductPage() {
                       }
                     }}
                   />
-                  <Button
-                    type="button"
-                    disabled={newColorSaving || !newColorName.trim()}
-                    onClick={async () => {
-                      const val = newColorName.trim();
-                      if (!val || newColorSaving) return;
-                      try {
-                        setNewColorSaving(true);
-                        const { data } = await api.post('/api/masters/colors', { name: val });
-                        const savedName = (data?.name || val).toString();
-                        setAllColors((prev) => Array.from(new Set([...(prev || []), savedName])).sort((a,b)=>a.localeCompare(b)));
-                        const display = savedName.toUpperCase();
-                        setColorList((prev) => (prev.includes(display) ? prev : [...prev, display]));
-                        setNewColorName('');
-                        setColorSuggestions([]);
-                        setColorOpen(false);
-                      } catch (err) {
-                        console.warn('Failed to save color', err);
-                      } finally {
-                        setNewColorSaving(false);
-                      }
-                    }}
-                  >
-                    {newColorSaving ? 'Saving…' : 'Add'}
-                  </Button>
                 </div>
                 {colorOpen && newColorName.trim().length > 0 && colorSuggestions.length > 0 && (
                   <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow max-h-64 overflow-auto">
@@ -1129,7 +1141,7 @@ export default function NewProductPage() {
                 {sizeOpen && (
                   <div className="absolute z-20 mt-1 w-full border rounded bg-white shadow p-2 max-h-56 overflow-auto">
                     <div className="grid grid-cols-3 gap-2">
-                      {PRESET_SIZES.map((sz) => {
+                      {[...new Set([...PRESET_SIZES, ...allSizes])].map((sz) => {
                         const id = `sz-${sz}`;
                         const checked = selectedSizes.includes(sz);
                         return (
@@ -1156,6 +1168,54 @@ export default function NewProductPage() {
               {selectedSizes.length > 0 && (
                 <p className="text-xs text-muted-foreground mt-1">Selected: {selectedSizes.join(", ")}</p>
               )}
+              {/* Add a new size (creates in SizeMaster and selects it) */}
+              <div className="mt-2 flex items-center gap-2">
+                <Input
+                  value={newSizeLabel}
+                  onChange={(e) => setNewSizeLabel(e.target.value)}
+                  placeholder="Add new size (e.g., XXL or EU 42)"
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const val = newSizeLabel.trim();
+                      if (!val || newSizeSaving) return;
+                      try {
+                        setNewSizeSaving(true);
+                        await api.post('/api/masters/sizes', { label: val });
+                        // Update master list and select it
+                        setAllSizes((prev) => Array.from(new Set([...(prev || []), val])).sort((a,b)=>a.localeCompare(b)));
+                        setSelectedSizes((prev) => (prev.includes(val) ? prev : [...prev, val]));
+                        setNewSizeLabel('');
+                      } catch (err) {
+                        console.warn('Failed to save size', err);
+                      } finally {
+                        setNewSizeSaving(false);
+                      }
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  disabled={newSizeSaving || !newSizeLabel.trim()}
+                  onClick={async () => {
+                    const val = newSizeLabel.trim();
+                    if (!val || newSizeSaving) return;
+                    try {
+                      setNewSizeSaving(true);
+                      await api.post('/api/masters/sizes', { label: val });
+                      setAllSizes((prev) => Array.from(new Set([...(prev || []), val])).sort((a,b)=>a.localeCompare(b)));
+                      setSelectedSizes((prev) => (prev.includes(val) ? prev : [...prev, val]));
+                      setNewSizeLabel('');
+                    } catch (err) {
+                      console.warn('Failed to save size', err);
+                    } finally {
+                      setNewSizeSaving(false);
+                    }
+                  }}
+                >
+                  {newSizeSaving ? 'Saving…' : 'Add'}
+                </Button>
+              </div>
             </div>
             <div>
               <Label className="m-2">Quantity</Label>
@@ -1423,26 +1483,6 @@ export default function NewProductPage() {
           </Button>
         </div>
       </form>
-      {/* ---------- Variant media per color ---------- */}
-      
-      {/* Category quick-pick options (populated from master) */}
-      <datalist id="category-options">
-        {allCategories.map((o) => (
-          <option key={o} value={o} />
-        ))}
-      </datalist>
-      {/* Supplier quick-pick options (populated from master) */}
-      <datalist id="supplier-options">
-        {allSuppliers.map((o) => (
-          <option key={o} value={o} />
-        ))}
-      </datalist>
-      {/* Category quick-pick options for the input above */}
-      <datalist id="category-options">
-        {CATEGORY_OPTIONS.map((o) => (
-          <option key={o} value={o} />
-        ))}
-      </datalist>
     </div>
   );
 }
