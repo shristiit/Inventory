@@ -295,17 +295,17 @@ export default function ProductsPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 bg-white shadow-lg rounded-xl border border-gray-200">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold mb-6">Products — Size </h1>
-        <div className="flex justify-end mb-4 gap-2">
+      <div className="flex items-center justify-between gap-3 flex-wrap md:flex-nowrap">
+        <h1 className="text-2xl font-bold mb-2 md:mb-6">Products — Size</h1>
+        <div className="w-full md:w-auto flex flex-col md:flex-row md:items-center md:justify-end gap-2 mb-4">
           <Input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search Product, Style, SKU, Size, Barcode"
-            className="w-72"
+            className="w-full md:w-72"
           />
           <select
-            className="h-10 border rounded px-3"
+            className="h-10 border rounded px-3 w-full md:w-auto"
             value={dressFilter}
             onChange={(e) => setDressFilter(e.target.value)}
           >
@@ -314,24 +314,29 @@ export default function ProductsPage() {
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
-          <Button
-            className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all"
-            onClick={() => router.push("/Products/new")}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Create product
-          </Button>
-          <Button onClick={() => router.push("/Products/inactive")}>
-            In-active Products
-          </Button>
-
-          <Button variant="outline" onClick={() => fetchPage(page)}>
-            Refresh
-          </Button>
+          <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
+            <Button
+              className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all w-full md:w-auto"
+              onClick={() => router.push("/Products/new")}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Create product
+            </Button>
+            <Button
+              className="hidden md:inline-flex"
+              onClick={() => router.push("/Products/draft")}
+            >
+              Draft
+            </Button>
+            <Button variant="outline" className="w-full md:w-auto" onClick={() => fetchPage(page)}>
+              Refresh
+            </Button>
+          </div>
         </div>
       </div>
 
-      <div className="overflow-x-auto border rounded-lg shadow-sm">
+      {/* Desktop table */}
+      <div className="overflow-x-auto border rounded-lg shadow-sm hidden md:block">
         <Table>
           <TableHeader>
             <TableRow className="bg-gray-100">
@@ -377,17 +382,24 @@ export default function ProductsPage() {
                     </span>
                   </TableCell>
                   <TableCell>
-                    <span className="text-gray-900">
+                    <Link
+                      href={`/Products/${li.productId}`}
+                      className="text-indigo-600 hover:underline"
+                      title="Open product details"
+                    >
                       {highlight(li.title, searchTerm)}
-                    </span>
+                    </Link>
                   </TableCell>
                   <TableCell className="font-mono">
-                    {highlight(li.styleNumber, searchTerm)}
+                    <span className="text-gray-900">
+                      {highlight(li.styleNumber, searchTerm)}
+                    </span>
                   </TableCell>
                   <TableCell>
                     <Link
                       href={`/Variant/${encodeURIComponent(li.sku)}`}
                       className="text-indigo-600 hover:underline"
+                      title={`Open variant ${li.sku}`}
                     >
                       {highlight(li.sku, searchTerm)}
                     </Link>
@@ -403,6 +415,50 @@ export default function ProductsPage() {
             )}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-3">
+        {filteredLines.length === 0 ? (
+          <div className="text-sm text-gray-500 p-3 border rounded">No products found.</div>
+        ) : (
+          filteredLines.map((li) => (
+            <div key={`${li.productId}-${li.variantId}-${li.sizeId}`} className="border rounded p-3 bg-white shadow-sm">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold">{li.title}</div>
+                <div className="text-xs text-gray-500">{formatMinorGBP(li.priceMinor)}</div>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                <div>
+                  <div className="text-gray-500 text-xs">Barcode</div>
+                  <div className="font-mono break-all">{li.barcode}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500 text-xs">Style No.</div>
+                  <div className="font-mono">{li.styleNumber}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500 text-xs">SKU</div>
+                  <Link href={`/Variant/${encodeURIComponent(li.sku)}`} className="text-indigo-600 underline">
+                    {li.sku}
+                  </Link>
+                </div>
+                <div>
+                  <div className="text-gray-500 text-xs">Size</div>
+                  <div>{li.sizeLabel}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500 text-xs">Total</div>
+                  <div>{li.totalStock}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500 text-xs">Sellable</div>
+                  <div>{li.freeToSell}</div>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       {totalPages > 1 && (

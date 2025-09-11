@@ -93,6 +93,7 @@ export default function VariantPage() {
   const [data, setData] = useState<VariantDeep | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -117,7 +118,10 @@ export default function VariantPage() {
     return () => { cancelled = true; };
   }, [sku]);
 
-  const priceGBP = useMemo(() => formatMinorGBP(data?.priceMinor), [data?.priceMinor]);
+  const priceGBP = useMemo(() => {
+    const minor = typeof data?.priceMinor === 'number' ? data!.priceMinor! : (data as any)?.product?.price;
+    return formatMinorGBP(minor);
+  }, [data?.priceMinor, (data as any)?.product?.price]);
   const updated = useMemo(() => {
     if (!data?.updatedAt) return "—";
     try {
@@ -162,19 +166,40 @@ export default function VariantPage() {
     );
   }, [data]);
 
+  const openAt = (i: number) => {
+    if (i >= 0 && i < mediaList.length) setLightboxIndex(i);
+  };
+  const closeLightbox = () => setLightboxIndex(null);
+  const nextLightbox = () =>
+    setLightboxIndex((idx) =>
+      idx == null ? null : (idx + 1) % Math.max(mediaList.length, 1)
+    );
+  const prevLightbox = () =>
+    setLightboxIndex((idx) =>
+      idx == null
+        ? null
+        : (idx - 1 + Math.max(mediaList.length, 1)) % Math.max(mediaList.length, 1)
+    );
+
+  useEffect(() => {
+    if (lightboxIndex == null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeLightbox();
+      else if (e.key === "ArrowRight") nextLightbox();
+      else if (e.key === "ArrowLeft") prevLightbox();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightboxIndex, mediaList.length]);
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Color and Details</h1>
-          <p className="text-sm text-muted-foreground">SKU: {sku}</p>
+          <h1 className="text-2xl font-bold">Product Details</h1>
         </div>
         <div className="flex gap-2">
-          {data?.product?._id && (
-            <Button variant="outline" onClick={() => router.push(`/Products/${data.product!._id}`)}>
-              View Product
-            </Button>
-          )}
+          
           <Button variant="outline" onClick={() => router.back()}>Back</Button>
         </div>
       </div>
@@ -215,20 +240,7 @@ export default function VariantPage() {
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="font-medium">Colour</TableCell>
-                  <TableCell className="flex items-center gap-3">
-                    {data.color?.code && (
-                      <span
-                        className="inline-block h-4 w-4 rounded border"
-                        style={{ backgroundColor: data.color.code }}
-                        title={data.color.code}
-                      />
-                    )}
-                    <span>
-                      {data.color?.name || "—"}
-                      {data.color?.code && <span className="ml-2 text-muted-foreground">({data.color.code})</span>}
-                    </span>
-                  </TableCell>
+                  
                 </TableRow>
                 <TableRow><TableCell className="font-medium">Price</TableCell><TableCell>{priceGBP}</TableCell></TableRow>
                 <TableRow><TableCell className="font-medium">Updated</TableCell><TableCell>{updated}</TableCell></TableRow>
@@ -245,21 +257,28 @@ export default function VariantPage() {
                           const name = filenameFromUrl(m.url);
                           return (
                             <figure key={m.url + i} className="w-20">
-                              {m.type === "video" ? (
-                                <video
-                                  src={m.url}
-                                  className="h-16 w-16 rounded border object-cover"
-                                  muted
-                                  playsInline
-                                />
-                              ) : (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={m.url}
-                                  alt={name}
-                                  className="h-16 w-16 rounded border object-cover"
-                                />
-                              )}
+                              <button
+                                type="button"
+                                onClick={() => openAt(i)}
+                                className="block"
+                                title="Click to expand"
+                              >
+                                {m.type === "video" ? (
+                                  <video
+                                    src={m.url}
+                                    className="h-16 w-16 rounded border object-cover cursor-zoom-in"
+                                    muted
+                                    playsInline
+                                  />
+                                ) : (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={m.url}
+                                    alt={name}
+                                    className="h-16 w-16 rounded border object-cover cursor-zoom-in"
+                                  />
+                                )}
+                              </button>
                               <span className="block mt-1 text-[10px] text-muted-foreground truncate" title={name}>
                                 {name}
                               </span>
@@ -274,10 +293,7 @@ export default function VariantPage() {
                   </TableCell>
                 </TableRow>
 
-                <TableRow>
-                  <TableCell className="font-medium">Variant ID</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{data._id}</TableCell>
-                </TableRow>
+               
               </TableBody>
             </Table>
           </div>
@@ -330,11 +346,86 @@ export default function VariantPage() {
                   const name = filenameFromUrl(m.url);
                   return (
                     <figure key={m.url + i} className="w-28">
+                      <button
+                        type="button"
+                        onClick={() => openAt(i)}
+                        className="block"
+                        title="Click to expand"
+                      >
+                        {m.type === "video" ? (
+                          <video
+                            src={m.url}
+                            className="h-24 w-24 rounded-md object-cover border cursor-zoom-in"
+                            muted
+                            playsInline
+                          />
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={m.url}
+                            alt={name}
+                            className="h-24 w-24 rounded-md object-cover border cursor-zoom-in"
+                          />
+                        )}
+                      </button>
+                      <span className="block mt-1 text-[10px] text-muted-foreground truncate" title={name}>
+                        {name}
+                      </span>
+                    </figure>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {lightboxIndex != null && mediaList[lightboxIndex] && (
+            <div
+              className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+              onClick={closeLightbox}
+            >
+              <button
+                type="button"
+                onClick={closeLightbox}
+                aria-label="Close"
+                className="absolute top-4 right-4 text-white/90 hover:text-white text-2xl"
+              >
+                ×
+              </button>
+              {mediaList.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); prevLightbox(); }}
+                    aria-label="Previous"
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-white/90 hover:text-white text-3xl"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); nextLightbox(); }}
+                    aria-label="Next"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white/90 hover:text-white text-3xl"
+                  >
+                    ›
+                  </button>
+                </>
+              )}
+              <div
+                className="max-w-[95vw] max-h-[85vh]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {(() => {
+                  const m = mediaList[lightboxIndex!];
+                  const name = filenameFromUrl(m.url);
+                  return (
+                    <div className="flex flex-col items-center gap-2">
                       {m.type === "video" ? (
                         <video
                           src={m.url}
-                          className="h-24 w-24 rounded-md object-cover border"
+                          className="max-h-[80vh] max-w-[90vw] rounded shadow"
                           controls
+                          autoPlay
                           playsInline
                         />
                       ) : (
@@ -342,15 +433,13 @@ export default function VariantPage() {
                         <img
                           src={m.url}
                           alt={name}
-                          className="h-24 w-24 rounded-md object-cover border"
+                          className="max-h-[80vh] max-w-[90vw] rounded shadow"
                         />
                       )}
-                      <span className="block mt-1 text-[10px] text-muted-foreground truncate" title={name}>
-                        {name}
-                      </span>
-                    </figure>
+                      <div className="text-white/80 text-xs truncate max-w-full" title={name}>{name}</div>
+                    </div>
                   );
-                })}
+                })()}
               </div>
             </div>
           )}

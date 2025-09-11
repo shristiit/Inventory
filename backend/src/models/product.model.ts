@@ -17,6 +17,12 @@ export interface ProductDoc extends Document {
   categoryId?: Types.ObjectId | null;
   subcategoryId?: Types.ObjectId | null;
   supplierId?: Types.ObjectId | null;
+  media?: Array<{
+    url: string;
+    type: 'image' | 'video';
+    alt?: string;
+    isPrimary?: boolean;
+  }>;
 }
 
 const ProductSchema = new Schema<ProductDoc>(
@@ -31,6 +37,12 @@ const ProductSchema = new Schema<ProductDoc>(
     categoryId:  { type: Schema.Types.ObjectId, ref: 'Master', default: null, index: true },
     subcategoryId:{ type: Schema.Types.ObjectId, ref: 'Master', default: null, index: true },
     supplierId:  { type: Schema.Types.ObjectId, ref: 'Master', default: null, index: true },
+    media:       [{
+      url: { type: String, required: true },
+      type:{ type: String, enum: ['image','video'], required: true },
+      alt: { type: String },
+      isPrimary: { type: Boolean, default: false }
+    }],
     status:      { type: String, enum: ['active','inactive','draft','archived'], default: 'draft', index: true },
     isDeleted:   { type: Boolean, default: false, index: true },
     createdBy:   { type: Schema.Types.ObjectId, ref: 'User' },

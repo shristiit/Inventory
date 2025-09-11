@@ -9,7 +9,9 @@ function slugify(s: string) {
 export async function upsertColor(name: string, code?: string) {
   const slug = slugify(name);
   if (!slug) throw new Error('Color name required');
-  const update: any = { name, isActive: true };
+  // Do not set `name` in $set when also using $setOnInsert(name) —
+  // MongoDB disallows updating the same path in both operators during upsert.
+  const update: any = { isActive: true };
   if (code) update.code = code;
   if (slug) update.slug = slug;
   const doc = await ColorMaster.findOneAndUpdate(

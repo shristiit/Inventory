@@ -127,6 +127,15 @@ function normSize(s: string) {
   return (s || "").trim().toLowerCase();
 }
 
+function humanFileSize(n: number) {
+  if (!Number.isFinite(n)) return "";
+  const units = ["B", "KB", "MB", "GB"]; 
+  let i = 0; 
+  let v = n; 
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
+}
+
 /** Parse a size input like "S,M,L" or "S:10,M:5,UK 8:0" into entries. */
 function parseSizesInput(
   input: string,
@@ -226,6 +235,11 @@ export default function NewProductPage() {
     "XXL",
     ...Array.from({ length: (34 - 2) / 2 + 1 }, (_, i) => String(2 + i * 2)),
   ];
+  // Quick-pick preset colors
+  const PRESET_COLORS: string[] = [
+    'Red', 'Green', 'Yellow', 'Blue', 'Black',
+    'White', 'Pink', 'Purple', 'Orange', 'Brown',
+  ];
   const [supplier, setSupplier] = useState("");
   const [season, setSeason] = useState("");
   const [wholesale, setWholesale] = useState<string | number>("");
@@ -233,6 +247,8 @@ export default function NewProductPage() {
   // quick add row (top mini-form)
   const [colorName, setColorName] = useState("");
   const [colorList, setColorList] = useState<string[]>([]);
+  const [newColorName, setNewColorName] = useState("");
+  const [newColorSaving, setNewColorSaving] = useState(false);
   // removed color code field
   const [sizeLabel, setSizeLabel] = useState("");
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
@@ -241,12 +257,21 @@ export default function NewProductPage() {
   const [quantity, setQuantity] = useState<number>(0);
   const [location,setLocation] = useState("")
  const [mediaFile, setMediaFile] = useState<File | null>(null);
-  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
+ const [mediaPreview, setMediaPreview] = useState<string | null>(null);
+  // Product-level media queue (multiple files)
+  const [productMedia, setProductMedia] = useState<File[]>([]);
+  const [productMediaPreviews, setProductMediaPreviews] = useState<string[]>([]);
+  // Variant-level media staged by color (multiple files per color)
+  const [colorMedia, setColorMedia] = useState<Record<string, File[]>>({});
+  const [colorMediaPreviews, setColorMediaPreviews] = useState<Record<string, string[]>>({});
 
   // table rows
   const [lines, setLines] = useState<Line[]>([]);
   const [colorSuggestions, setColorSuggestions] = useState<string[]>([]);
   const [allColors, setAllColors] = useState<string[]>([]);
+  const [colorOpen, setColorOpen] = useState(false);
+  const colorPickerRef = useRef<HTMLDivElement | null>(null);
+  const [colorFilter, setColorFilter] = useState("");
   const [sizeSuggestions, setSizeSuggestions] = useState<Array<{ _id: string; label: string }>>([]);
   const [categorySuggestions, setCategorySuggestions] = useState<Array<{ _id: string; name: string }>>([]);
   const [subcategorySuggestions, setSubcategorySuggestions] = useState<Array<{ _id: string; name: string }>>([]);
@@ -285,8 +310,14 @@ export default function NewProductPage() {
   useEffect(() => {
     return () => {
       if (mediaPreview) URL.revokeObjectURL(mediaPreview);
+      productMediaPreviews.forEach((u) => { try { URL.revokeObjectURL(u); } catch {} });
+      Object.values(colorMediaPreviews).forEach((arr) =>
+        arr.forEach((u) => {
+          try { URL.revokeObjectURL(u); } catch {}
+        })
+      );
     };
-  }, [mediaPreview]);
+  }, [mediaPreview, productMediaPreviews, colorMediaPreviews]);
 
   // Close size dropdown when clicking outside
   useEffect(() => {
@@ -316,6 +347,16 @@ export default function NewProductPage() {
       }
     })();
   }, []);
+
+  // Close color dropdown when clicking outside
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (!colorPickerRef.current) return;
+      if (!colorPickerRef.current.contains(e.target as Node)) setColorOpen(false);
+    }
+    if (colorOpen) document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [colorOpen]);
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
@@ -352,6 +393,8 @@ export default function NewProductPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // (removed color dropdown open/close wrapper)
 
   // Auto-select category from style number when possible
   useEffect(() => {
@@ -681,25 +724,36 @@ export default function NewProductPage() {
       const productId = created?._id;
       if (!productId) throw new Error("Create API did not return product _id");
 
-      // If a media file was selected, attach it to the first variant
+      // If media files were selected, attach to the product (product-level media)
       try {
-        if (mediaFile) {
-          let variantId: string | undefined = created?.variants?.[0]?._id;
-          if (!variantId) {
-            // fetch deep to locate a variant id
-            const { data: deep } = await api.get(`/api/products/${productId}`);
-            variantId = deep?.variants?.[0]?._id;
-          }
-          if (variantId) {
-            const fd = new FormData();
-            fd.append('files', mediaFile);
-            // Let Axios set the correct multipart boundary header
-            await api.post(`/api/products/variants/${variantId}/media`, fd);
-          }
+        if (mediaFile || productMedia.length) {
+          const fd = new FormData();
+          if (mediaFile) fd.append('files', mediaFile);
+          productMedia.forEach((f) => fd.append('files', f));
+          await api.post(`/api/products/${productId}/media`, fd);
         }
       } catch (e) {
         // non-fatal: media attach failed, but product is created
         console.warn('Media upload failed:', e);
+      }
+
+      // Upload variant-level media grouped by color (if any)
+      try {
+        const createdVariants: Array<{ _id: string; color?: { name?: string } }> = created?.variants || [];
+        const mapByColor = new Map<string, string>(); // norm color -> variantId
+        createdVariants.forEach((v) => {
+          const key = normColor(v?.color?.name || "");
+          if (key) mapByColor.set(key, v._id);
+        });
+        for (const [key, files] of Object.entries(colorMedia)) {
+          const variantId = mapByColor.get(normColor(key));
+          if (!variantId || !files?.length) continue;
+          const fd = new FormData();
+          files.forEach((f) => fd.append('files', f));
+          await api.post(`/api/products/variants/${variantId}/media`, fd);
+        }
+      } catch (e) {
+        console.warn('Variant media upload failed:', e);
       }
 
       // clear draft after successful save
@@ -742,16 +796,11 @@ export default function NewProductPage() {
                 <td className="p-2">
                   <Input
                     value={styleNumber}
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    onChange={(e) => {
-                      const raw = e.target.value || "";
-                      const digits = raw.replace(/\D/g, "");
-                      setStyleNumber(digits);
-                    }}
-                    placeholder="Auto-assigned if left blank"
+                    onChange={(e) => setStyleNumber(e.target.value)}
+                    required
+                    placeholder="e.g., STY-500010 or ABC123"
                   />
-                  <p className="text-[11px] text-muted-foreground mt-1">Leave blank to auto-generate. Numbers only if provided.</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Use letters and/or numbers. Must be unique.</p>
                 </td>
               </tr>
               <tr>
@@ -790,6 +839,48 @@ export default function NewProductPage() {
                 <td className="align-top p-2 font-medium">Description</td>
                 <td className="p-2">
                   <Textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
+                </td>
+              </tr>
+              <tr>
+                <td className="align-top p-2 font-medium">Product Media</td>
+                <td className="p-2">
+                  <div className="flex items-start gap-3">
+                    <Input
+                      type="file"
+                      accept="image/*,video/*"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        if (!files.length) return;
+                        setProductMedia((prev) => [...prev, ...files]);
+                        const urls = files.map((f) => URL.createObjectURL(f));
+                        setProductMediaPreviews((prev) => [...prev, ...urls]);
+                      }}
+                    />
+                    {productMedia.length > 0 && (
+                      <ul className="mt-2 w-full space-y-1 text-sm">
+                        {productMedia.map((f, i) => (
+                          <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-3 rounded border px-2 py-1">
+                            <span className="truncate">{f.name} {f.type ? `(${f.type.split('/')[0]})` : ''} · {humanFileSize(f.size)}</span>
+                            <button
+                              type="button"
+                              className="text-xs px-2 py-0.5 border rounded"
+                              onClick={() => {
+                                const url = productMediaPreviews[i];
+                                setProductMedia((prev) => prev.filter((_, idx) => idx !== i));
+                                setProductMediaPreviews((prev) => prev.filter((_, idx) => idx !== i));
+                                if (url) { try { URL.revokeObjectURL(url); } catch {} }
+                              }}
+                              aria-label={`Remove ${f.name}`}
+                            >
+                              Remove
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1">You can also attach media to each color below after adding lines.</p>
                 </td>
               </tr>
               <tr>
@@ -903,82 +994,125 @@ export default function NewProductPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-start">
             <div className="md:col-span-2">
-              <Label className="m-2">Color name</Label>
-              <div className="relative">
-                <Input
-                  value={colorName}
-                  onChange={async (e) => {
-                    const v = e.target.value;
-                    setColorName(v);
-                    const q = v.trim().toLowerCase();
-                    if (!q) return setColorSuggestions([]);
-                    let sugg = allColors
-                      .filter((n) => n.toLowerCase().startsWith(q))
-                      .slice(0, 15);
-                    // Fallback to API if local cache is empty
-                    if (sugg.length === 0 && allColors.length === 0) {
-                      try {
-                        const { data } = await api.get(`/api/masters/colors`, { params: { q: v, limit: 15 } });
-                        const names: string[] = Array.isArray(data)
-                          ? Array.from(new Set(
-                              data
-                                .map((c: any) => (typeof c === 'string' ? c : c?.name))
-                                .filter((n: any) => typeof n === 'string' && n.trim().length)
-                            ))
-                          : [];
-                        setColorSuggestions(names);
-                        return;
-                      } catch {
-                        // ignore
+              <Label className="m-2">Color</Label>
+              <div ref={colorPickerRef} className="relative">
+                <div className="flex gap-2">
+                  <Input
+                    value={newColorName}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setNewColorName(v);
+                      // Debounced backend color suggestions
+                      setColorOpen(true);
+                      if (colorDebounceRef.current) clearTimeout(colorDebounceRef.current);
+                      colorDebounceRef.current = setTimeout(async () => {
+                        if (!v.trim()) { setColorSuggestions([]); return; }
+                        try {
+                          const { data } = await api.get(`/api/masters/colors`, { params: { q: v, limit: 8 } });
+                          const names: string[] = Array.isArray(data)
+                            ? Array.from(new Set(
+                                data
+                                  .map((c: any) => (typeof c === 'string' ? c : c?.name))
+                                  .filter((n: any) => typeof n === 'string' && n.trim().length)
+                              ))
+                            : [];
+                          setColorSuggestions(names);
+                        } catch { setColorSuggestions([]); }
+                      }, 250);
+                    }}
+                    onFocus={() => setColorOpen(true)}
+                    placeholder="Search or add a color (e.g., Teal)"
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const val = newColorName.trim();
+                        if (!val || newColorSaving) return;
+                        try {
+                          setNewColorSaving(true);
+                          const { data } = await api.post('/api/masters/colors', { name: val });
+                          const savedName = (data?.name || val).toString();
+                          // Update master list and selected chips
+                          setAllColors((prev) => Array.from(new Set([...(prev || []), savedName])).sort((a,b)=>a.localeCompare(b)));
+                          const display = savedName.toUpperCase();
+                          setColorList((prev) => (prev.includes(display) ? prev : [...prev, display]));
+                          setNewColorName('');
+                          setColorSuggestions([]);
+                          setColorOpen(false);
+                        } catch (err) {
+                          console.warn('Failed to save color', err);
+                        } finally {
+                          setNewColorSaving(false);
+                        }
                       }
-                    }
-                    setColorSuggestions(sugg);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const v = colorName.trim();
-                      if (!v) return;
-                      const exists = colorList.some((c) => normColor(c) === normColor(v));
-                      if (!exists) setColorList((prev) => [...prev, v]);
-                      setColorName("");
-                      setColorSuggestions([]);
-                    }
-                  }}
-                  placeholder="Enter Color and press Enter"
-                />
-                {colorSuggestions.length > 0 && (
-                  <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow max-h-48 overflow-auto">
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    disabled={newColorSaving || !newColorName.trim()}
+                    onClick={async () => {
+                      const val = newColorName.trim();
+                      if (!val || newColorSaving) return;
+                      try {
+                        setNewColorSaving(true);
+                        const { data } = await api.post('/api/masters/colors', { name: val });
+                        const savedName = (data?.name || val).toString();
+                        setAllColors((prev) => Array.from(new Set([...(prev || []), savedName])).sort((a,b)=>a.localeCompare(b)));
+                        const display = savedName.toUpperCase();
+                        setColorList((prev) => (prev.includes(display) ? prev : [...prev, display]));
+                        setNewColorName('');
+                        setColorSuggestions([]);
+                        setColorOpen(false);
+                      } catch (err) {
+                        console.warn('Failed to save color', err);
+                      } finally {
+                        setNewColorSaving(false);
+                      }
+                    }}
+                  >
+                    {newColorSaving ? 'Saving…' : 'Add'}
+                  </Button>
+                </div>
+                {colorOpen && newColorName.trim().length > 0 && colorSuggestions.length > 0 && (
+                  <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow max-h-64 overflow-auto">
                     {colorSuggestions.map((c) => (
                       <button
                         type="button"
-                        key={c}
+                        key={`sugg-${c}`}
                         className="w-full text-left px-2 py-1 hover:bg-gray-100"
                         onClick={() => {
-                          setColorName(c);
+                          const display = c.toUpperCase();
+                          setColorList((prev) => (prev.includes(display) ? prev : [...prev, display]));
+                          setNewColorName('');
                           setColorSuggestions([]);
+                          setColorOpen(false);
                         }}
                       >
-                        <span className="mr-2">{c}</span>
+                        {c}
                       </button>
                     ))}
                   </div>
                 )}
-                <div className="flex flex-wrap gap-2 mt-2 min-h-6">
-                  {colorList.map((c, idx) => (
-                    <span key={`${c}-${idx}`} className="inline-flex items-center bg-gray-100 border border-gray-300 rounded-full px-2 py-1 text-xs">
-                      {c}
-                      <button
-                        type="button"
-                        className="ml-2 text-gray-500 hover:text-gray-700"
-                        onClick={() => setColorList((prev) => prev.filter((_, i) => i !== idx))}
-                        aria-label={`Remove ${c}`}
+                {/* Selected colors (chips) */}
+                {colorList.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2 min-h-6">
+                    {colorList.map((c, idx) => (
+                      <span
+                        key={`${c}-${idx}`}
+                        className="inline-flex items-center bg-gray-100 border border-gray-300 rounded-full px-2 py-1 text-xs"
                       >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
+                        {c.toUpperCase()}
+                        <button
+                          type="button"
+                          className="ml-2 text-gray-500 hover:text-gray-700"
+                          onClick={() => setColorList((prev) => prev.filter((_, i) => i !== idx))}
+                          aria-label={`Remove ${c}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             
@@ -1044,39 +1178,95 @@ export default function NewProductPage() {
             </div>
             <div className="md:col-span-2">
               <Label className="m-2">Media</Label>
-              <div className="flex items-center gap-3">
+              <div className="grid items-center gap-3">
                 <Input
                   type="file"
                   accept="image/*,video/*"
-                  onChange={handleFileMedia}
+                  multiple
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    if (!files.length) return;
+                    // Add to selected color(s) (variant-level), allowing multiple per color
+                    const targets = colorList.length ? colorList : (colorName.trim() ? [colorName] : []);
+                    if (targets.length) {
+                      const normTargets = targets.map((c) => normColor(c));
+                      setColorMedia((prev) => {
+                        const next = { ...prev } as Record<string, File[]>;
+                        normTargets.forEach((key) => {
+                          next[key] = [ ...(next[key] || []), ...files ];
+                        });
+                        return next;
+                      });
+                      setColorMediaPreviews((prev) => {
+                        const next = { ...prev } as Record<string, string[]>;
+                        const urls = files.map((f) => URL.createObjectURL(f));
+                        normTargets.forEach((key) => {
+                          next[key] = [ ...(next[key] || []), ...urls ];
+                        });
+                        return next;
+                      });
+                    }
+                    // reset input to allow re-selecting the same file again
+                    e.currentTarget.value = '';
+                  }}
                 />
-                {/* Compact preview to keep row height small */}
-                {mediaFile && (
-                  <figure className="w-24 text-center">
-                    {mediaFile.type.startsWith("video/") ? (
-                      <video
-                        src={mediaPreview ?? undefined}
-                        className="h-20 w-20 object-cover rounded border"
-                        controls
-                        playsInline
-                      />
-                    ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={mediaPreview ?? undefined}
-                        alt={mediaFile.name}
-                        className="h-20 w-20 object-cover rounded border"
-                      />
-                    )}
-                    <span
-                      className="block mt-1 text-[10px] text-muted-foreground truncate max-w-24"
-                      title={mediaFile.name}
-                    >
-                      {mediaFile.name}
-                    </span>
-                  </figure>
-                )}
               </div>
+              {(() => {
+                const targets = colorList.length ? colorList : (colorName.trim() ? [colorName.trim()] : []);
+                if (!targets.length) {
+                  return <p className="mt-2 text-[11px] text-muted-foreground">Select or enter a color to attach media.</p>;
+                }
+                // Build a unified, de-duplicated file list across selected colors
+                const normTargets = targets.map((c) => normColor(c));
+                const unifiedFiles: File[] = Array.from(
+                  new Set(
+                    normTargets.flatMap((key) => (colorMedia[key] || []))
+                  )
+                );
+                if (unifiedFiles.length === 0) return null;
+                return (
+                  <ul className="mt-2 w-full text-sm flex flex-wrap gap-2">
+                    {unifiedFiles.map((f, idx) => (
+                      <li key={`${f.name}-${f.size}-${idx}`} className="flex items-center gap-2 rounded border px-2 py-1">
+                        <span className="truncate max-w-[200px]" title={f.name}>
+                          {f.name} {f.type ? `(${f.type.split('/')[0]})` : ''} · {humanFileSize(f.size)}
+                        </span>
+                        <button
+                          type="button"
+                          className="text-xs px-2 py-0.5 border rounded"
+                          onClick={() => {
+                            // Remove this file from all selected colors
+                            setColorMedia((prev) => {
+                              const next = { ...prev } as Record<string, File[]>;
+                              normTargets.forEach((key) => {
+                                next[key] = (next[key] || []).filter((file) => file !== f);
+                              });
+                              return next;
+                            });
+                            setColorMediaPreviews((prev) => {
+                              const next = { ...prev } as Record<string, string[]>;
+                              normTargets.forEach((key) => {
+                                // remove corresponding preview by index match
+                                const files = colorMedia[key] || [];
+                                const idxInColor = files.findIndex((file) => file === f);
+                                if (idxInColor >= 0) {
+                                  const url = (next[key] || [])[idxInColor];
+                                  next[key] = (next[key] || []).filter((_, i) => i !== idxInColor);
+                                  if (url) { try { URL.revokeObjectURL(url); } catch {} }
+                                }
+                              });
+                              return next;
+                            });
+                          }}
+                          aria-label={`Remove ${f.name}`}
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
             </div>
             {/* Quantity input removed in quick add */}
 
@@ -1233,6 +1423,8 @@ export default function NewProductPage() {
           </Button>
         </div>
       </form>
+      {/* ---------- Variant media per color ---------- */}
+      
       {/* Category quick-pick options (populated from master) */}
       <datalist id="category-options">
         {allCategories.map((o) => (

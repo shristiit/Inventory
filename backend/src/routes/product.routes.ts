@@ -36,4 +36,8 @@ r.delete('/:id', authGuard, roleGuard('admin'), ctrl.deleteProductCascadeArchive
 // Accepts multipart/form-data with one or more files under field name 'files'
 r.post('/variants/:variantId/media', authGuard, roleAnyGuard('admin', 'staff'), upload.array('files', 10), ctrl.addVariantMedia);
 
+// Media upload for a product (admin or staff)
+// Accepts multipart/form-data with one or more files under field name 'files'
+r.post('/:id/media', authGuard, roleAnyGuard('admin', 'staff'), upload.array('files', 10), ctrl.addProductMedia);
+
 export default r;

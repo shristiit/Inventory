@@ -115,3 +115,19 @@ export const addVariantMedia: RequestHandler = asyncHandler(async (req: Request,
   const updated = await variantSvc.addMedia(variantId, items, actorId);
   return res.status(201).json({ media: items, variant: updated });
 });
+
+// Product-level media upload
+export const addProductMedia: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+  const actorId = req.user?._id ?? null;
+  const { id } = req.params as { id: string };
+  const files = (req.files as Express.Multer.File[]) || [];
+  if (!files.length) {
+    return res.status(400).json({ message: 'No files uploaded' });
+  }
+  const items = files.map((f) => ({
+    url: `/static/uploads/${f.filename}`,
+    type: f.mimetype?.startsWith('video/') ? 'video' as const : 'image' as const,
+  }));
+  const updated = await productSvc.addProductMedia(id, items, actorId);
+  return res.status(201).json({ media: items, product: updated });
+});
