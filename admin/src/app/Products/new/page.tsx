@@ -226,20 +226,9 @@ export default function NewProductPage() {
   ];
 
   // Preset sizes: OS, letter sizes, and even numeric sizes 2-34
-  const PRESET_SIZES: string[] = [
-    "OS",
-    "S",
-    "M",
-    "L",
-    "XL",
-    "XXL",
-    ...Array.from({ length: (34 - 2) / 2 + 1 }, (_, i) => String(2 + i * 2)),
-  ];
+  
   // Quick-pick preset colors
-  const PRESET_COLORS: string[] = [
-    'Red', 'Green', 'Yellow', 'Blue', 'Black',
-    'White', 'Pink', 'Purple', 'Orange', 'Brown',
-  ];
+  
   const [supplier, setSupplier] = useState("");
   const [season, setSeason] = useState("");
   const [wholesale, setWholesale] = useState<string | number>("");
@@ -1145,12 +1134,7 @@ export default function NewProductPage() {
                       <div className="text-sm text-gray-500 px-1 py-2">No sizes loaded from backend.</div>
                     ) : (
                       <>
-                        <Input
-                          value={sizeFilter}
-                          onChange={(e) => setSizeFilter(e.target.value)}
-                          placeholder="Filter sizes…"
-                          className="mb-2 h-8 text-sm"
-                        />
+                        
                         <div className="grid grid-cols-3 gap-2">
                           {allSizes.filter((s) => s.toLowerCase().includes(sizeFilter.toLowerCase())).map((sz) => {
                             const id = `sz-${sz}`;
@@ -1434,7 +1418,7 @@ export default function NewProductPage() {
 
         <div className="flex gap-2">
           <Button className="bg-green-600" type="submit" disabled={saving}>
-            {saving ? "Saving…" : "Create product"}
+            {saving ? "Saving…" : "Save product"}
           </Button>
           <Button
             type="button"

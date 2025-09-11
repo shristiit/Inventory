@@ -228,6 +228,7 @@ export default function VariantPage() {
           {/* Overview */}
           <div className="space-y-2">
             <h2 className="text-lg font-semibold">Overview</h2>
+            
             <Table>
               <TableBody>
                 <TableRow>
@@ -240,34 +241,26 @@ export default function VariantPage() {
                   </TableCell>
                 </TableRow>
                 <TableRow><TableCell className="font-medium">SKU</TableCell><TableCell>{data.sku}</TableCell></TableRow>
-                <TableRow>
-                  <TableCell className="font-medium">Status</TableCell>
-                  <TableCell>
-                    <span className={[
-                      "inline-flex items-center rounded-full px-2 py-0.5 text-xs capitalize",
-                      data.status === "active" ? "bg-green-100 text-green-800"
-                        : data.status === "inactive" ? "bg-gray-100 text-gray-800"
-                        : data.status === "draft" ? "bg-yellow-100 text-yellow-800"
-                        : data.status === "archived" ? "bg-red-100 text-red-800"
-                        : "bg-slate-100 text-slate-800",
-                    ].join(" ")}>
-                      {data.status || "unknown"}
-                    </span>
-                  </TableCell>
-                </TableRow>
+                
                 <TableRow>
                   
                 </TableRow>
                 <TableRow><TableCell className="font-medium">Updated</TableCell><TableCell>{updated}</TableCell></TableRow>
 
                 {/* Media thumbnails in overview with filename captions (prefer variant; fallback to product) */}
-                <TableRow>
-                  <TableCell className="font-medium">Media</TableCell>
-                  <TableCell>
+                
+
+               
+              </TableBody>
+            </Table>
+            </div>
+            <div>
+                  <div className="font-medium">Media</div>
+                  <div>
                     {variantMediaList.length === 0 && productMediaList.length === 0 ? (
                       <span className="text-muted-foreground">—</span>
                     ) : (
-                      <div className="flex flex-wrap gap-3">
+                      <div className="flex flex-wrap gap-4">
                         {(variantMediaList.length ? variantMediaList : productMediaList).slice(0, 4).map((m, i) => {
                           const name = filenameFromUrl(m.url);
                           const open = variantMediaList.length ? () => openVariantAt(i) : () => openProductAt(i);
@@ -292,14 +285,8 @@ export default function VariantPage() {
                         )}
                       </div>
                     )}
-                  </TableCell>
-                </TableRow>
-
-               
-              </TableBody>
-            </Table>
-          </div>
-
+                  </div>
+                </div>
           {/* Sizes */}
           <div className="space-y-2">
             <h2 className="text-lg font-semibold">Sizes & Inventory</h2>

@@ -783,99 +783,7 @@ export default function ProductDetailsPage() {
           </div>
         </section>
 
-        {/* Category / Subcategory / Supplier */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-4 border rounded p-4">
-          <div className="relative">
-            <Label className="m-2">Category</Label>
-            <Input
-              value={category}
-              onChange={(e) => {
-                const v = e.target.value; setCategory(v);
-                if (categoryDebounceRef.current) clearTimeout(categoryDebounceRef.current);
-                if (!v.trim()) { setCategorySuggestions([]); return; }
-                categoryDebounceRef.current = setTimeout(async () => {
-                  try {
-                    const { data } = await api.get(`/api/masters/categories`, { params: { q: v, limit: 8 } });
-                    const names: string[] = Array.isArray(data)
-                      ? Array.from(new Set(data.map((x: any) => x?.name).filter((n: any) => typeof n === 'string')))
-                      : [];
-                    setCategorySuggestions(names);
-                  } catch { setCategorySuggestions([]); }
-                }, 200);
-              }}
-              placeholder="e.g., Dynasty"
-            />
-            {categorySuggestions.length > 0 && (
-              <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow">
-                {categorySuggestions.map((c) => (
-                  <button key={c} type="button" className="w-full text-left px-2 py-1 hover:bg-gray-100" onClick={() => { setCategory(c); setCategorySuggestions([]); }}>
-                    {c}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="relative">
-            <Label className="m-2">Subcategory</Label>
-            <Input
-              value={subcategory}
-              onChange={(e) => {
-                const v = e.target.value; setSubcategory(v);
-                if (subcategoryDebounceRef.current) clearTimeout(subcategoryDebounceRef.current);
-                if (!v.trim()) { setSubcategorySuggestions([]); return; }
-                subcategoryDebounceRef.current = setTimeout(async () => {
-                  try {
-                    const { data } = await api.get(`/api/masters/categories`, { params: { q: v, limit: 8 } });
-                    const names: string[] = Array.isArray(data)
-                      ? Array.from(new Set(data.map((x: any) => x?.name).filter((n: any) => typeof n === 'string')))
-                      : [];
-                    setSubcategorySuggestions(names);
-                  } catch { setSubcategorySuggestions([]); }
-                }, 200);
-              }}
-              placeholder="Optional"
-            />
-            {subcategorySuggestions.length > 0 && (
-              <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow">
-                {subcategorySuggestions.map((c) => (
-                  <button key={c} type="button" className="w-full text-left px-2 py-1 hover:bg-gray-100" onClick={() => { setSubcategory(c); setSubcategorySuggestions([]); }}>
-                    {c}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="relative">
-            <Label className="m-2">Supplier</Label>
-            <Input
-              value={supplier}
-              onChange={(e) => {
-                const v = e.target.value; setSupplier(v);
-                if (supplierDebounceRef.current) clearTimeout(supplierDebounceRef.current);
-                if (!v.trim()) { setSupplierSuggestions([]); return; }
-                supplierDebounceRef.current = setTimeout(async () => {
-                  try {
-                    const { data } = await api.get(`/api/masters/suppliers`, { params: { q: v, limit: 8 } });
-                    const names: string[] = Array.isArray(data)
-                      ? Array.from(new Set(data.map((x: any) => x?.name).filter((n: any) => typeof n === 'string')))
-                      : [];
-                    setSupplierSuggestions(names);
-                  } catch { setSupplierSuggestions([]); }
-                }, 200);
-              }}
-              placeholder="Optional"
-            />
-            {supplierSuggestions.length > 0 && (
-              <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow">
-                {supplierSuggestions.map((c) => (
-                  <button key={c} type="button" className="w-full text-left px-2 py-1 hover:bg-gray-100" onClick={() => { setSupplier(c); setSupplierSuggestions([]); }}>
-                    {c}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
+       
 
         {/* Product Media (upload and list) */}
         <section className="border rounded p-4 space-y-2">
@@ -1441,8 +1349,8 @@ export default function ProductDetailsPage() {
                                 variant="destructive"
                                 onClick={() => deleteVariant(v._id)}
                               >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete color
+                                <Trash2 />
+                                
                               </Button>
                             </div>
                           )}
@@ -1918,9 +1826,6 @@ export default function ProductDetailsPage() {
           </Table>
         </div>
       </section>
-
-    
-            
     </div>
   );
 }
