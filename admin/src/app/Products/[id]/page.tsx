@@ -26,25 +26,7 @@ import {
   Plus,
 } from "lucide-react";
 import type {} from 'react';
-const DRESS_TYPES: string[] = [
-  "Ball Gown",
-  "Bracelets",
-  "Bridal",
-  "Classic Prom",
-  "Cocktail",
-  "Curve Allure",
-  "Curve Classic",
-  "Curve Cocktail",
-  "Earrings",
-  "Evening Elegance",
-  "Headpieces",
-  "Jewellery",
-  "Necklace",
-  "Pageant",
-  "Premium",
-  "Red Carpet Glamour",
-  "Rings",
-];
+
 
 // Preset sizes used in size pickers (same as Create Product)
 const PRESET_SIZES: string[] = [
@@ -198,6 +180,8 @@ export default function ProductDetailsPage() {
   const [err, setErr] = useState<string | null>(null);
   const [sizesInput, setSizesInput] = useState("");
   const [defQty, setDefQty] = useState<number>(0);
+  const [season, setSeason] = useState("");
+  const [wholesale, setWholesale] = useState<string>("");
   const [loc, setLoc] = useState("WH-DEFAULT");
 
   // product fields
@@ -385,6 +369,25 @@ export default function ProductDetailsPage() {
     setSaving(true);
     setErr(null);
     try {
+      // Basic required-field validation
+      const missing: string[] = [];
+      if (!styleNumber.trim()) missing.push('Style number');
+      if (!title.trim()) missing.push('Title');
+      if (!desc.trim()) missing.push('Description');
+      if (!pricePounds || Number.isNaN(Number(pricePounds))) missing.push('Price');
+      if (!status) missing.push('Status');
+      if (!category.trim()) missing.push('Category');
+      if (!subcategory.trim()) missing.push('Subcategory');
+      if (!supplier.trim()) missing.push('Supplier');
+      if (!season.trim()) missing.push('Season');
+      if (!dressType.trim()) missing.push('Dress type');
+      if (!wholesale || Number.isNaN(Number(wholesale))) missing.push('Cost price');
+      if (missing.length) {
+        setSaving(false);
+        setErr(`Please fill all required fields: ${missing.join(', ')}`);
+        return;
+      }
+
       const payload: Partial<ProductDeep> = {
         styleNumber: styleNumber.trim(),
         title: title.trim(),
@@ -418,8 +421,8 @@ export default function ProductDetailsPage() {
     try {
       const { data } = await api.delete(`/api/products/${id}`);
       if (data?.deleted || data?.ok || true) {
-        alert("Product archived.");
-        router.replace("/products");
+        alert("Product Deleted.");
+        router.replace("/Products");
       }
     } catch (e: any) {
       setErr(e?.response?.data?.message || "Failed to delete product.");
@@ -797,7 +800,66 @@ export default function ProductDetailsPage() {
           </div>
         </section>
 
-       
+        {/* Required business attributes */}
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-4 border rounded p-4">
+          <div>
+            <Label className="m-2">Category</Label>
+            <Input
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              required
+              placeholder="e.g., DYNASTY"
+            />
+          </div>
+          <div>
+            <Label className="m-2">Subcategory</Label>
+            <Input
+              value={subcategory}
+              onChange={(e) => setSubcategory(e.target.value)}
+              required
+              placeholder="e.g., SPRING SUMMER 2019"
+            />
+          </div>
+          <div>
+            <Label className="m-2">Supplier</Label>
+            <Input
+              value={supplier}
+              onChange={(e) => setSupplier(e.target.value)}
+              required
+              placeholder="e.g., ACME CO"
+            />
+          </div>
+          <div>
+            <Label className="m-2">Season</Label>
+            <Input
+              value={season}
+              onChange={(e) => setSeason(e.target.value)}
+              required
+              placeholder="e.g., SS25"
+            />
+          </div>
+          <div>
+            <Label className="m-2">Dress Type</Label>
+            <Input
+              value={dressType}
+              onChange={(e) => setDressType(e.target.value)}
+              required
+              placeholder="e.g., Bridal"
+            />
+          </div>
+          <div>
+            <Label className="m-2">Cost Price ($)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              value={wholesale}
+              onChange={(e) => setWholesale(e.target.value)}
+              required
+              placeholder="e.g., 45.00"
+            />
+          </div>
+        </section>
+
 
         {/* Product Media (upload and list) */}
         <section className="border rounded p-4 space-y-2">
@@ -879,23 +941,6 @@ export default function ProductDetailsPage() {
           )}
         </section>
 
-        {/* Dress Type */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4 border rounded p-4">
-          <div>
-            <Label className="m-2">Dress Type</Label>
-            <select
-              className="w-full h-10 border rounded px-3"
-              value={dressType}
-              onChange={(e) => setDressType(e.target.value)}
-            >
-              <option value="">None</option>
-              {DRESS_TYPES.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-        </section>
-
         {/* Attributes editor removed */}
         </fieldset>
 
@@ -917,7 +962,7 @@ export default function ProductDetailsPage() {
             onClick={onDeleteProduct}
             disabled={readOnly}
           >
-            Archive product
+            Delete product
           </Button>
         </div>
       </form>

@@ -9,100 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/app/Components/textarea";
 import { Trash2, Pencil, Check, X as XIcon } from "lucide-react";
-import { ProductCategory } from "@/app/Assets/ProductData";
 
-// Predefined subcategory options provided by business
-const SUBCATEGORY_OPTIONS: string[] = [
-  "None",
-  "Annika Spring Summer 2010 Collection",
-  "Annika Spring Summer 2011 Collection",
-  "Annika Spring Summer 2012 Collection",
-  "Annika Spring Summer 2013 Collection",
-  "Dynasty Autumn Winter 2011 Collection",
-  "Dynasty Autumn Winter 2012 Collection",
-  "Dynasty Autumn Winter 2013 Collection",
-  "Dynasty Autumn Winter 2014 Collection",
-  "Dynasty Autumn Winter 2015 Collection",
-  "Dynasty Autumn Winter 2016 Collection",
-  "Dynasty Autumn Winter 2017 Collection",
-  "Dynasty Autumn Winter 2018 Collection",
-  "Dynasty Bridal Autumn Winter 2018 Collection",
-  "Dynasty Bridal Spring Summer 2012 Collection",
-  "Dynasty Bridal Spring Summer 2018 Collection",
-  "Dynasty Bridal Spring Summer 2019",
-  "Dynasty Cocktail Autumn Winter 2015 Collection",
-  "Dynasty Cocktail Autumn Winter 2016 Collection",
-  "Dynasty Cocktail Autumn Winter 2017 Collection",
-  "Dynasty Cocktail Autumn Winter 2018 Collection",
-  "Dynasty Cocktail Spring Summer 2016 Collection",
-  "Dynasty Cocktail Spring Summer 2017 Collection",
-  "Dynasty Cocktail Spring Summer 2018 Collection",
-  "Dynasty Cocktail Spring Summer 2019",
-  "Dynasty Curve Autumn Winter 2015 Collection",
-  "Dynasty Curve Autumn Winter 2016 Collection",
-  "Dynasty Curve Autumn Winter 2017 Collection",
-  "Dynasty Curve Autumn Winter 2018 Collection",
-  "Dynasty Curve Spring Summer 2016 Collection",
-  "Dynasty Curve Spring Summer 2017 Collection",
-  "Dynasty Curve Spring Summer 2018 Collection",
-  "Dynasty Curve Spring Summer 2019",
-  "Dynasty Curve Spring Summer 2020",
-  "Dynasty Krystal London",
-  "Dynasty London Spring Summer 2018 Collection",
-  "Dynasty London Spring Summer 2019",
-  "Dynasty London Spring Summer 2020",
-  "Dynasty Premium Spring Summer 2019",
-  "Dynasty Spirit Autumn Winter 2016 Collection",
-  "Dynasty Spirit Autumn Winter 2017 Collection",
-  "Dynasty Spirit Autumn Winter 2018 Collection",
-  "Dynasty Spirit Spring Summer 2016 Collection",
-  "Dynasty Spirit Spring Summer 2017 Collection",
-  "Dynasty Spirit Spring Summer 2018 Collection",
-  "Dynasty Spirit Spring Summer 2019",
-  "Dynasty Spring Summer 2010 Collection",
-  "Dynasty Spring Summer 2011 Collection",
-  "Dynasty Spring Summer 2012 Collection",
-  "Dynasty Spring Summer 2013 Collection",
-  "Dynasty Spring Summer 2014 Collection",
-  "Dynasty Spring Summer 2015 Collection",
-  "Dynasty Spring Summer 2016 Collection",
-  "Dynasty Spring Summer 2017 Collection",
-  "Dynasty Spring Summer 2018 Collection",
-  "Dynasty Spring Summer 2019",
-  "Viviana Autumn Winter 2010 Collection",
-  "Viviana Autumn Winter 2011 Collection",
-  "Viviana Autumn Winter 2012 Collection",
-  "Viviana Autumn Winter 2013 Collection",
-  "Viviana Autumn Winter 2014 Collection",
-  "Viviana Autumn Winter 2015 Collection",
-  "Viviana Spring Summer 2011 Collection",
-  "Viviana Spring Summer 2012 Collection",
-  "Viviana Spring Summer 2013 Collection",
-  "Viviana Spring Summer 2014 Collection",
-  "Viviana Spring Summer 2015 Collection",
-  "Yasmin Autumn Winter 2014 Collection",
-  "Yasmin Spring Summer 2011 Collection",
-  "Yasmin Spring Summer 2012 Collection",
-  "Yasmin Spring Summer 2013 Collection",
-  "Yasmin Spring Summer 2014 Collection",
-  "Yasmin Spring Summer 2015 Collection",
-];
 
-// Predefined category options for quick selection + auto-detect from style number
-const CATEGORY_OPTIONS: string[] = [
-  "Annika",
-  "Dynasty",
-  "Dynasty Bridal",
-  "Dynasty Cocktail",
-  "Dynasty Curve",
-  "Dynasty Krystal London",
-  "Dynasty Premium",
-  "Dynasty Spirit",
-  "Viviana",
-  "Yasmin",
-];
-
-/* ---------------- helpers ---------------- */
 function skuSuffixFromColor(name: string) {
   const letters = (name || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
   return letters.slice(0, 6) || "CLR";
@@ -268,14 +176,22 @@ export default function NewProductPage() {
   const [newSizeLabel, setNewSizeLabel] = useState("");
   const [newSizeSaving, setNewSizeSaving] = useState(false);
   const [categorySuggestions, setCategorySuggestions] = useState<Array<{ _id: string; name: string }>>([]);
-  const [subcategorySuggestions, setSubcategorySuggestions] = useState<Array<{ _id: string; name: string }>>([]);
-  const [allCategories, setAllCategories] = useState<string[]>([]);
-  const [allSuppliers, setAllSuppliers] = useState<string[]>([]);
-  const colorDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const sizeDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const categoryDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const subcategoryDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [categorySaving, setCategorySaving] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [subcategorySuggestions, setSubcategorySuggestions] = useState<Array<{ _id: string; name: string }>>([]);
+  const [subcategorySaving, setSubcategorySaving] = useState(false);
+  const [supplierSuggestions, setSupplierSuggestions] = useState<Array<{ _id: string; name: string }>>([]);
+  const [supplierSaving, setSupplierSaving] = useState(false);
+  const [seasonSuggestions, setSeasonSuggestions] = useState<Array<{ _id: string; name: string }>>([]);
+  const [seasonSaving, setSeasonSaving] = useState(false);
+  const [dressTypeSuggestions, setDressTypeSuggestions] = useState<Array<{ _id: string; name: string }>>([]);
+  const [dressTypeSaving, setDressTypeSaving] = useState(false);
+  const colorDebounceRef = useRef<number | null>(null);
+  const categoryDebounceRef = useRef<number | null>(null);
+  const subcategoryDebounceRef = useRef<number | null>(null);
+  const supplierDebounceRef = useRef<number | null>(null);
+  const seasonDebounceRef = useRef<number | null>(null);
+  const dressTypeDebounceRef = useRef<number | null>(null);
 
   // inline edit state
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -410,61 +326,7 @@ export default function NewProductPage() {
 
   // (removed color dropdown open/close wrapper)
 
-  // Auto-select category from style number when possible
-  useEffect(() => {
-    const alpha = (styleNumber || "").replace(/[^a-zA-Z]/g, "").toUpperCase();
-    if (!alpha) {
-      setAutoCategory(null);
-      return;
-    }
-    const norm = (s: string) => s.replace(/[^a-zA-Z]/g, "").toUpperCase();
-    const mapped = CATEGORY_OPTIONS.map((c) => ({ c, n: norm(c) }));
-    let hit = mapped.find((m) => alpha.startsWith(m.n));
-    if (!hit) hit = mapped.find((m) => alpha.includes(m.n));
-    const detected = hit?.c ?? null;
-    setAutoCategory(detected);
-    if (detected && !category) setCategory(detected);
-  }, [styleNumber]);
-
-  // Load all categories once to populate dropdown and datalist
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await api.get(`/api/masters/categories`, { params: { q: '', limit: 1000 } });
-        const names: string[] = Array.isArray(data)
-          ? Array.from(new Set(
-              data
-                .map((c: any) => (typeof c === 'string' ? c : c?.name))
-                .filter((n: any) => typeof n === 'string' && n.trim().length)
-            ))
-              .sort((a, b) => a.localeCompare(b))
-          : [];
-        setAllCategories(names);
-      } catch {
-        setAllCategories([]);
-      }
-    })();
-  }, []);
-
-  // Load all suppliers once
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await api.get(`/api/masters/suppliers`, { params: { q: '', limit: 1000 } });
-        const names: string[] = Array.isArray(data)
-          ? Array.from(new Set(
-              data
-                .map((c: any) => (typeof c === 'string' ? c : c?.name))
-                .filter((n: any) => typeof n === 'string' && n.trim().length)
-            ))
-              .sort((a, b) => a.localeCompare(b))
-          : [];
-        setAllSuppliers(names);
-      } catch {
-        setAllSuppliers([]);
-      }
-    })();
-  }, []);
+  // Removed legacy auto-category and preload effects
 
   /* ---------------- DRAFT: autosave (debounced) ---------------- */
   const autosaveTimer = useRef<number | null>(null);
@@ -660,6 +522,7 @@ export default function NewProductPage() {
       const style = tokenize(styleNumber);
       if (!style) throw new Error("Style number is required.");
       if (!title.trim()) throw new Error("Title is required.");
+      if (!category.trim()) throw new Error("Category is required.");
       if (lines.length === 0) throw new Error("Add at least one variant row.");
       if (editingIndex !== null)
         throw new Error("Finish or cancel the edit in progress.");
@@ -866,7 +729,7 @@ export default function NewProductPage() {
               <tr>
                 <td className="align-top p-2 font-medium">Description</td>
                 <td className="p-2">
-                  <Textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
+                  <Textarea required rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
                 </td>
               </tr>
               <tr>
@@ -918,98 +781,310 @@ export default function NewProductPage() {
                     <Input
                       value={category}
                       onChange={(e) => {
-                        const v = e.target.value;
+                        const vRaw = e.target.value;
+                        const v = vRaw.toUpperCase();
                         setCategory(v);
                         setSelectedCategoryId(null);
-                        if (categoryDebounceRef.current) clearTimeout(categoryDebounceRef.current);
-                        if (v.trim().length < 2) return setCategorySuggestions([]);
-                        categoryDebounceRef.current = setTimeout(async () => {
+                        if (categoryDebounceRef.current !== null) window.clearTimeout(categoryDebounceRef.current);
+                        // Require at least 2 chars to query
+                        if (v.trim().length < 1) {
+                          setCategorySuggestions([]);
+                          return;
+                        }
+                        categoryDebounceRef.current = window.setTimeout(async () => {
                           try {
                             const { data } = await api.get(`/api/masters/categories`, { params: { q: v, limit: 8 } });
-                            setCategorySuggestions(data || []);
-                          } catch { setCategorySuggestions([]); }
-                        }, 200);
+                            setCategorySuggestions(Array.isArray(data) ? data : []);
+                          } catch {
+                            setCategorySuggestions([]);
+                          } 
+                        }, 250);
                       }}
-                      list="category-options"
-                      placeholder="e.g., Dynasty"
+                      required
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = category.trim();
+                          if (!val || categorySaving) return;
+                          try {
+                            setCategorySaving(true);
+                            const { data } = await api.post('/api/masters/categories', { name: val });
+                            const savedName = (data?.name || val).toString();
+                            setCategory(savedName.toUpperCase());
+                            setSelectedCategoryId(data?._id || null);
+                            // Prepend to suggestions if not present
+                            setCategorySuggestions((prev) => {
+                              const exists = (prev || []).some((c) => c.name.toLowerCase() === savedName.toLowerCase());
+                              return exists ? prev : [{ _id: data?._id || savedName, name: savedName }, ...(prev || [])].slice(0, 8);
+                            });
+                          } catch (err) {
+                            // best-effort, keep input as-is
+                          } finally {
+                            setCategorySaving(false);
+                          }
+                        }
+                      }}
+                      placeholder="Enter category name"
                     />
                     {categorySuggestions.length > 0 && (
-                      <div className="absolute z-10 mt-1 w-full rounded border bg-white shadow">
+                      <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow">
                         {categorySuggestions.map((c) => (
-                          <button type="button" key={c._id} className="w-full text-left px-2 py-1 hover:bg-gray-100" onClick={() => { setCategory(c.name); setSelectedCategoryId(c._id); setCategorySuggestions([]); }}>
-                            {c.name}
+                          <button
+                            type="button"
+                            key={c._id}
+                            className="w-full text-left px-2 py-1 hover:bg-gray-100"
+                            onClick={() => {
+                              setCategory((c.name || '').toUpperCase());
+                              setSelectedCategoryId(c._id);
+                              setCategorySuggestions([]);
+                            }}
+                          >
+                            {String(c.name || '').toUpperCase()}
                           </button>
                         ))}
-                      </div>
-                    )}
-                    {autoCategory && autoCategory !== category && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        Auto-detected from style: <button type="button" className="underline" onClick={() => setCategory(autoCategory!)}>{autoCategory}</button>
                       </div>
                     )}
                   </div>
                 </td>
               </tr>
               <tr>
-                <td className="align-top p-2 font-medium">Subcategory</td>
+                <td className="align-top p-2 font-medium">Sub-Category</td>
                 <td className="p-2">
-                  <select className="w-full h-10 border rounded px-3" value={subcategory} onChange={(e) => setSubcategory(e.target.value)}>
-                    <option value="">None</option>
-                    {SUBCATEGORY_OPTIONS.filter((o) => o !== "None").map((o) => (
-                      <option key={o} value={o}>{o}</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <Input
+                      value={subcategory}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setSubcategory(v);
+                        if (subcategoryDebounceRef.current !== null) window.clearTimeout(subcategoryDebounceRef.current);
+                        if (!selectedCategoryId || v.trim().length < 2) {
+                          setSubcategorySuggestions([]);
+                          return;
+                        }
+                        subcategoryDebounceRef.current = window.setTimeout(async () => {
+                          try {
+                            const { data } = await api.get(`/api/masters/categories`, { params: { q: v, parent: selectedCategoryId, limit: 8 } });
+                            setSubcategorySuggestions(Array.isArray(data) ? data : []);
+                          } catch {
+                            setSubcategorySuggestions([]);
+                          }
+                        }, 250);
+                      }}
+                      required
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = subcategory.trim();
+                          if (!val || !selectedCategoryId || subcategorySaving) return;
+                          try {
+                            setSubcategorySaving(true);
+                            const { data } = await api.post('/api/masters/categories', { name: val, parentId: selectedCategoryId });
+                            const savedName = (data?.name || val).toString();
+                            setSubcategory(savedName);
+                            setSubcategorySuggestions((prev) => {
+                              const exists = (prev || []).some((c) => c.name.toLowerCase() === savedName.toLowerCase());
+                              return exists ? prev : [{ _id: data?._id || savedName, name: savedName }, ...(prev || [])].slice(0, 8);
+                            });
+                          } catch {}
+                          finally {
+                            setSubcategorySaving(false);
+                          }
+                        }
+                      }}
+                      placeholder="Enter Sub-Category"
+                    />
+                    {subcategorySuggestions.length > 0 && (
+                      <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow">
+                        {subcategorySuggestions.map((c) => (
+                          <button
+                            type="button"
+                            key={c._id}
+                            className="w-full text-left px-2 py-1 hover:bg-gray-100"
+                            onClick={() => {
+                              setSubcategory(c.name || '');
+                              setSubcategorySuggestions([]);
+                            }}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </td>
               </tr>
               <tr>
                 <td className="align-top p-2 font-medium">Supplier</td>
                 <td className="p-2">
-                  <Input value={supplier} onChange={(e) => setSupplier(e.target.value)} list="supplier-options" />
+                  <div className="relative">
+                    <Input
+                      value={supplier}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setSupplier(v);
+                        if (supplierDebounceRef.current !== null) window.clearTimeout(supplierDebounceRef.current);
+                        if (v.trim().length < 1) { setSupplierSuggestions([]); return; }
+                        supplierDebounceRef.current = window.setTimeout(async () => {
+                          try {
+                            const { data } = await api.get(`/api/masters/suppliers`, { params: { q: v, limit: 8 } });
+                            setSupplierSuggestions(Array.isArray(data) ? data : []);
+                          } catch { setSupplierSuggestions([]); }
+                        }, 250);
+                      }}
+                      required
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = supplier.trim();
+                          if (!val || supplierSaving) return;
+                          try {
+                            setSupplierSaving(true);
+                            const { data } = await api.post('/api/masters/suppliers', { name: val });
+                            const savedName = (data?.name || val).toString();
+                            setSupplier(savedName);
+                            setSupplierSuggestions((prev) => {
+                              const exists = (prev || []).some((c) => (c.name || '').toLowerCase() === savedName.toLowerCase());
+                              return exists ? prev : [{ _id: data?._id || savedName, name: savedName }, ...(prev || [])].slice(0, 8);
+                            });
+                          } catch {}
+                          finally { setSupplierSaving(false); }
+                        }
+                      }}
+                      placeholder="Enter Supplier"
+                    />
+                    {supplierSuggestions.length > 0 && (
+                      <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow">
+                        {supplierSuggestions.map((c) => (
+                          <button
+                            type="button"
+                            key={c._id}
+                            className="w-full text-left px-2 py-1 hover:bg-gray-100"
+                            onClick={() => { setSupplier(c.name || ''); setSupplierSuggestions([]); }}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </td>
               </tr>
               <tr>
                 <td className="align-top p-2 font-medium">Season</td>
                 <td className="p-2">
-                  <select className="w-full h-10 border rounded px-3" value={season} onChange={(e) => setSeason(e.target.value)}>
-                    <option value="">Select Season</option>
-                    <option value="AW10">AW10</option>
-                    <option value="AW11">AW11</option>
-                    <option value="AW12">AW12</option>
-                    <option value="AW13">AW13</option>
-                    <option value="AW14">AW14</option>
-                    <option value="AW15">AW15</option>
-                    <option value="AW16">AW16</option>
-                    <option value="AW17">AW17</option>
-                    <option value="AW18">AW18</option>
-                    <option value="SS10">SS10</option>
-                    <option value="SS11">SS11</option>
-                    <option value="SS12">SS12</option>
-                    <option value="SS13">SS13</option>
-                    <option value="SS14">SS14</option>
-                    <option value="SS15">SS15</option>
-                    <option value="SS16">SS16</option>
-                    <option value="SS17">SS17</option>
-                    <option value="SS18">SS18</option>
-                    <option value="SS19">SS19</option>
-                    <option value="SS20">SS20</option>
-                  </select>
+                  <div className="relative">
+                    <Input
+                      value={season}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setSeason(v);
+                        if (seasonDebounceRef.current !== null) window.clearTimeout(seasonDebounceRef.current);
+                        if (v.trim().length < 1) { setSeasonSuggestions([]); return; }
+                        seasonDebounceRef.current = window.setTimeout(async () => {
+                          try {
+                            const { data } = await api.get(`/api/masters/seasons`, { params: { q: v, limit: 8 } });
+                            setSeasonSuggestions(Array.isArray(data) ? data : []);
+                          } catch { setSeasonSuggestions([]); }
+                        }, 250);
+                      }}
+                      required
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = season.trim();
+                          if (!val || seasonSaving) return;
+                          try {
+                            setSeasonSaving(true);
+                            const { data } = await api.post('/api/masters/seasons', { name: val });
+                            const savedName = (data?.name || val).toString();
+                            setSeason(savedName);
+                            setSeasonSuggestions((prev) => {
+                              const exists = (prev || []).some((c) => (c.name || '').toLowerCase() === savedName.toLowerCase());
+                              return exists ? prev : [{ _id: data?._id || savedName, name: savedName }, ...(prev || [])].slice(0, 8);
+                            });
+                          } catch {}
+                          finally { setSeasonSaving(false); }
+                        }
+                      }}
+                      placeholder="Season"
+                    />
+                    {seasonSuggestions.length > 0 && (
+                      <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow">
+                        {seasonSuggestions.map((c) => (
+                          <button
+                            type="button"
+                            key={c._id}
+                            className="w-full text-left px-2 py-1 hover:bg-gray-100"
+                            onClick={() => { setSeason(c.name || ''); setSeasonSuggestions([]); }}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </td>
               </tr>
               <tr>
                 <td className="align-top p-2 font-medium">Dress Type</td>
                 <td className="p-2">
-                  <select className="w-full h-10 border rounded px-3" value={dressType} onChange={(e) => setDressType(e.target.value)}>
-                    <option value="">None</option>
-                    {DRESS_TYPES.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <Input
+                      value={dressType}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setDressType(v);
+                        if (dressTypeDebounceRef.current !== null) window.clearTimeout(dressTypeDebounceRef.current);
+                        if (v.trim().length < 1) { setDressTypeSuggestions([]); return; }
+                        dressTypeDebounceRef.current = window.setTimeout(async () => {
+                          try {
+                            const { data } = await api.get(`/api/masters/dress-types`, { params: { q: v, limit: 8 } });
+                            setDressTypeSuggestions(Array.isArray(data) ? data : []);
+                          } catch { setDressTypeSuggestions([]); }
+                        }, 250);
+                      }}
+                      required
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = dressType.trim();
+                          if (!val || dressTypeSaving) return;
+                          try {
+                            setDressTypeSaving(true);
+                            const { data } = await api.post('/api/masters/dress-types', { name: val });
+                            const savedName = (data?.name || val).toString();
+                            setDressType(savedName);
+                            setDressTypeSuggestions((prev) => {
+                              const exists = (prev || []).some((c) => (c.name || '').toLowerCase() === savedName.toLowerCase());
+                              return exists ? prev : [{ _id: data?._id || savedName, name: savedName }, ...(prev || [])].slice(0, 8);
+                            });
+                          } catch {}
+                          finally { setDressTypeSaving(false); }
+                        }
+                      }}
+                      placeholder="Enter Dress Type"
+                    />
+                    {dressTypeSuggestions.length > 0 && (
+                      <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow">
+                        {dressTypeSuggestions.map((c) => (
+                          <button
+                            type="button"
+                            key={c._id}
+                            className="w-full text-left px-2 py-1 hover:bg-gray-100"
+                            onClick={() => { setDressType(c.name || ''); setDressTypeSuggestions([]); }}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </td>
               </tr>
               <tr>
                 <td className="align-top p-2 font-medium">Cost Price ($)</td>
                 <td className="p-2">
-                  <Input type="number" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} />
+                  <Input type="number" required step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} />
                 </td>
               </tr>
             </tbody>
@@ -1032,8 +1107,8 @@ export default function NewProductPage() {
                       setNewColorName(v);
                       // Debounced backend color suggestions
                       setColorOpen(true);
-                      if (colorDebounceRef.current) clearTimeout(colorDebounceRef.current);
-                      colorDebounceRef.current = setTimeout(async () => {
+                      if (colorDebounceRef.current !== null) window.clearTimeout(colorDebounceRef.current);
+                      colorDebounceRef.current = window.setTimeout(async () => {
                         if (!v.trim()) { setColorSuggestions([]); return; }
                         try {
                           const { data } = await api.get(`/api/masters/colors`, { params: { q: v, limit: 8 } });

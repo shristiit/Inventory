@@ -66,7 +66,8 @@ export async function searchSizes(q: string, limit = 10, order: 'asc' | 'desc' =
 export async function upsertCategory(name: string, parentId?: any) {
   const slug = slugify(name);
   const filter: any = { kind: 'category', parentId: parentId || null, name };
-  const update: any = { kind: 'category', name, slug, isActive: true };
+  // Do not set 'kind' or 'name' in $set when also using $setOnInsert for them
+  const update: any = { slug, isActive: true };
   const doc = await Master.findOneAndUpdate(
     filter,
     { $setOnInsert: { kind: 'category', name }, $set: update },
@@ -92,7 +93,8 @@ export async function searchCategories(q: string, parentId?: any, limit = 10) {
 export async function upsertSupplier(name: string) {
   const slug = slugify(name);
   const filter: any = { kind: 'supplier', parentId: null, name };
-  const update: any = { kind: 'supplier', name, slug, isActive: true };
+  // Avoid setting the same path in both $setOnInsert and $set
+  const update: any = { slug, isActive: true };
   const doc = await Master.findOneAndUpdate(
     filter,
     { $setOnInsert: { kind: 'supplier', name }, $set: update },
@@ -110,4 +112,62 @@ export async function searchSuppliers(q: string, limit = 10) {
     ];
   }
   return Master.find(query).sort({ sortOrder: 1, name: 1 }).limit(limit).lean();
+}
+
+// Seasons
+export async function upsertSeason(name: string) {
+  const slug = slugify(name);
+  const filter: any = { kind: 'season', parentId: null, name };
+  const update: any = { slug, isActive: true };
+  const doc = await Master.findOneAndUpdate(
+    filter,
+    { $setOnInsert: { kind: 'season', name }, $set: update },
+    { new: true, upsert: true }
+  ).lean();
+  return doc;
+}
+
+export async function searchSeasons(q: string, limit = 10, order: 'asc' | 'desc' = 'asc') {
+  const query: any = { kind: 'season' };
+  if (q && q.trim().length) {
+    query.$or = [
+      { name: { $regex: q, $options: 'i' } },
+      { slug: { $regex: q.replace(/\s+/g, '-'), $options: 'i' } },
+    ];
+  }
+  const dir = order === 'desc' ? -1 : 1;
+  return Master.find(query)
+    .collation({ locale: 'en', strength: 2, numericOrdering: true })
+    .sort({ sortOrder: dir, name: dir })
+    .limit(limit)
+    .lean();
+}
+
+// Dress Types
+export async function upsertDressType(name: string) {
+  const slug = slugify(name);
+  const filter: any = { kind: 'dressType', parentId: null, name };
+  const update: any = { slug, isActive: true };
+  const doc = await Master.findOneAndUpdate(
+    filter,
+    { $setOnInsert: { kind: 'dressType', name }, $set: update },
+    { new: true, upsert: true }
+  ).lean();
+  return doc;
+}
+
+export async function searchDressTypes(q: string, limit = 10, order: 'asc' | 'desc' = 'asc') {
+  const query: any = { kind: 'dressType' };
+  if (q && q.trim().length) {
+    query.$or = [
+      { name: { $regex: q, $options: 'i' } },
+      { slug: { $regex: q.replace(/\s+/g, '-'), $options: 'i' } },
+    ];
+  }
+  const dir = order === 'desc' ? -1 : 1;
+  return Master.find(query)
+    .collation({ locale: 'en', strength: 2, numericOrdering: true })
+    .sort({ sortOrder: dir, name: dir })
+    .limit(limit)
+    .lean();
 }
