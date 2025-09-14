@@ -1,0 +1,54 @@
+version: 1
+name: inventory
+description: Common developer tasks for the Inventory monorepo
+
+# Simple task catalog Codex can surface and run.
+tasks:
+  setup:
+    description: Install root dependencies with pnpm
+    run: pnpm install
+
+  dev:
+    description: Start backend and admin concurrently
+    run: pnpm dev
+
+  backend:dev:
+    description: Start the backend in watch mode
+    run: pnpm --dir backend dev
+
+  backend:build:
+    description: Type-check and build backend to dist/
+    run: pnpm --dir backend build
+
+  backend:start:
+    description: Run compiled backend from dist/
+    run: pnpm --dir backend start
+
+  backend:seed:
+    description: Seed admin user (requires backend .env)
+    run: pnpm --dir backend seed
+
+  admin:dev:
+    description: Start the Next.js admin app
+    run: pnpm --dir admin dev
+
+  admin:build:
+    description: Build the admin app
+    run: pnpm --dir admin build
+
+  admin:start:
+    description: Start the built admin app
+    run: pnpm --dir admin start
+
+  mobile:web:
+    description: Run Expo app in web mode
+    run: pnpm --dir mobile web
+
+  mobile:ios:
+    description: Run Expo app on iOS simulator
+    run: pnpm --dir mobile ios
+
+  mobile:android:
+    description: Run Expo app on Android emulator
+    run: pnpm --dir mobile android
+
