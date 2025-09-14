@@ -9,100 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/app/Components/textarea";
 import { Trash2, Pencil, Check, X as XIcon } from "lucide-react";
-import { ProductCategory } from "@/app/Assets/ProductData";
 
-// Predefined subcategory options provided by business
-const SUBCATEGORY_OPTIONS: string[] = [
-  "None",
-  "Annika Spring Summer 2010 Collection",
-  "Annika Spring Summer 2011 Collection",
-  "Annika Spring Summer 2012 Collection",
-  "Annika Spring Summer 2013 Collection",
-  "Dynasty Autumn Winter 2011 Collection",
-  "Dynasty Autumn Winter 2012 Collection",
-  "Dynasty Autumn Winter 2013 Collection",
-  "Dynasty Autumn Winter 2014 Collection",
-  "Dynasty Autumn Winter 2015 Collection",
-  "Dynasty Autumn Winter 2016 Collection",
-  "Dynasty Autumn Winter 2017 Collection",
-  "Dynasty Autumn Winter 2018 Collection",
-  "Dynasty Bridal Autumn Winter 2018 Collection",
-  "Dynasty Bridal Spring Summer 2012 Collection",
-  "Dynasty Bridal Spring Summer 2018 Collection",
-  "Dynasty Bridal Spring Summer 2019",
-  "Dynasty Cocktail Autumn Winter 2015 Collection",
-  "Dynasty Cocktail Autumn Winter 2016 Collection",
-  "Dynasty Cocktail Autumn Winter 2017 Collection",
-  "Dynasty Cocktail Autumn Winter 2018 Collection",
-  "Dynasty Cocktail Spring Summer 2016 Collection",
-  "Dynasty Cocktail Spring Summer 2017 Collection",
-  "Dynasty Cocktail Spring Summer 2018 Collection",
-  "Dynasty Cocktail Spring Summer 2019",
-  "Dynasty Curve Autumn Winter 2015 Collection",
-  "Dynasty Curve Autumn Winter 2016 Collection",
-  "Dynasty Curve Autumn Winter 2017 Collection",
-  "Dynasty Curve Autumn Winter 2018 Collection",
-  "Dynasty Curve Spring Summer 2016 Collection",
-  "Dynasty Curve Spring Summer 2017 Collection",
-  "Dynasty Curve Spring Summer 2018 Collection",
-  "Dynasty Curve Spring Summer 2019",
-  "Dynasty Curve Spring Summer 2020",
-  "Dynasty Krystal London",
-  "Dynasty London Spring Summer 2018 Collection",
-  "Dynasty London Spring Summer 2019",
-  "Dynasty London Spring Summer 2020",
-  "Dynasty Premium Spring Summer 2019",
-  "Dynasty Spirit Autumn Winter 2016 Collection",
-  "Dynasty Spirit Autumn Winter 2017 Collection",
-  "Dynasty Spirit Autumn Winter 2018 Collection",
-  "Dynasty Spirit Spring Summer 2016 Collection",
-  "Dynasty Spirit Spring Summer 2017 Collection",
-  "Dynasty Spirit Spring Summer 2018 Collection",
-  "Dynasty Spirit Spring Summer 2019",
-  "Dynasty Spring Summer 2010 Collection",
-  "Dynasty Spring Summer 2011 Collection",
-  "Dynasty Spring Summer 2012 Collection",
-  "Dynasty Spring Summer 2013 Collection",
-  "Dynasty Spring Summer 2014 Collection",
-  "Dynasty Spring Summer 2015 Collection",
-  "Dynasty Spring Summer 2016 Collection",
-  "Dynasty Spring Summer 2017 Collection",
-  "Dynasty Spring Summer 2018 Collection",
-  "Dynasty Spring Summer 2019",
-  "Viviana Autumn Winter 2010 Collection",
-  "Viviana Autumn Winter 2011 Collection",
-  "Viviana Autumn Winter 2012 Collection",
-  "Viviana Autumn Winter 2013 Collection",
-  "Viviana Autumn Winter 2014 Collection",
-  "Viviana Autumn Winter 2015 Collection",
-  "Viviana Spring Summer 2011 Collection",
-  "Viviana Spring Summer 2012 Collection",
-  "Viviana Spring Summer 2013 Collection",
-  "Viviana Spring Summer 2014 Collection",
-  "Viviana Spring Summer 2015 Collection",
-  "Yasmin Autumn Winter 2014 Collection",
-  "Yasmin Spring Summer 2011 Collection",
-  "Yasmin Spring Summer 2012 Collection",
-  "Yasmin Spring Summer 2013 Collection",
-  "Yasmin Spring Summer 2014 Collection",
-  "Yasmin Spring Summer 2015 Collection",
-];
 
-// Predefined category options for quick selection + auto-detect from style number
-const CATEGORY_OPTIONS: string[] = [
-  "Annika",
-  "Dynasty",
-  "Dynasty Bridal",
-  "Dynasty Cocktail",
-  "Dynasty Curve",
-  "Dynasty Krystal London",
-  "Dynasty Premium",
-  "Dynasty Spirit",
-  "Viviana",
-  "Yasmin",
-];
-
-/* ---------------- helpers ---------------- */
 function skuSuffixFromColor(name: string) {
   const letters = (name || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
   return letters.slice(0, 6) || "CLR";
@@ -125,6 +33,15 @@ function normColor(s: string) {
 }
 function normSize(s: string) {
   return (s || "").trim().toLowerCase();
+}
+
+function humanFileSize(n: number) {
+  if (!Number.isFinite(n)) return "";
+  const units = ["B", "KB", "MB", "GB"]; 
+  let i = 0; 
+  let v = n; 
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
 /** Parse a size input like "S,M,L" or "S:10,M:5,UK 8:0" into entries. */
@@ -176,6 +93,7 @@ type DraftShape = {
   // quick add mini-form
   colorName: string;
   sizeLabel: string;
+  quantity?: number;
 
   // table
   lines: Line[];
@@ -217,15 +135,9 @@ export default function NewProductPage() {
   ];
 
   // Preset sizes: OS, letter sizes, and even numeric sizes 2-34
-  const PRESET_SIZES: string[] = [
-    "OS",
-    "S",
-    "M",
-    "L",
-    "XL",
-    "XXL",
-    ...Array.from({ length: (34 - 2) / 2 + 1 }, (_, i) => String(2 + i * 2)),
-  ];
+  
+  // Quick-pick preset colors
+  
   const [supplier, setSupplier] = useState("");
   const [season, setSeason] = useState("");
   const [wholesale, setWholesale] = useState<string | number>("");
@@ -233,30 +145,53 @@ export default function NewProductPage() {
   // quick add row (top mini-form)
   const [colorName, setColorName] = useState("");
   const [colorList, setColorList] = useState<string[]>([]);
+  const [newColorName, setNewColorName] = useState("");
+  const [newColorSaving, setNewColorSaving] = useState(false);
   // removed color code field
   const [sizeLabel, setSizeLabel] = useState("");
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [sizeFilter, setSizeFilter] = useState("");
   const [sizeOpen, setSizeOpen] = useState(false);
   const sizePickerRef = useRef<HTMLDivElement | null>(null);
   const [quantity, setQuantity] = useState<number>(0);
   const [location,setLocation] = useState("")
  const [mediaFile, setMediaFile] = useState<File | null>(null);
-  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
+ const [mediaPreview, setMediaPreview] = useState<string | null>(null);
+  // Product-level media queue (multiple files)
+  const [productMedia, setProductMedia] = useState<File[]>([]);
+  const [productMediaPreviews, setProductMediaPreviews] = useState<string[]>([]);
+  // Variant-level media staged by color (multiple files per color)
+  const [colorMedia, setColorMedia] = useState<Record<string, File[]>>({});
+  const [colorMediaPreviews, setColorMediaPreviews] = useState<Record<string, string[]>>({});
 
   // table rows
   const [lines, setLines] = useState<Line[]>([]);
   const [colorSuggestions, setColorSuggestions] = useState<string[]>([]);
   const [allColors, setAllColors] = useState<string[]>([]);
+  const [colorOpen, setColorOpen] = useState(false);
+  const colorPickerRef = useRef<HTMLDivElement | null>(null);
+  const [colorFilter, setColorFilter] = useState("");
   const [sizeSuggestions, setSizeSuggestions] = useState<Array<{ _id: string; label: string }>>([]);
+  const [allSizes, setAllSizes] = useState<string[]>([]);
+  const [newSizeLabel, setNewSizeLabel] = useState("");
+  const [newSizeSaving, setNewSizeSaving] = useState(false);
   const [categorySuggestions, setCategorySuggestions] = useState<Array<{ _id: string; name: string }>>([]);
-  const [subcategorySuggestions, setSubcategorySuggestions] = useState<Array<{ _id: string; name: string }>>([]);
-  const [allCategories, setAllCategories] = useState<string[]>([]);
-  const [allSuppliers, setAllSuppliers] = useState<string[]>([]);
-  const colorDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const sizeDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const categoryDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const subcategoryDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [categorySaving, setCategorySaving] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [subcategorySuggestions, setSubcategorySuggestions] = useState<Array<{ _id: string; name: string }>>([]);
+  const [subcategorySaving, setSubcategorySaving] = useState(false);
+  const [supplierSuggestions, setSupplierSuggestions] = useState<Array<{ _id: string; name: string }>>([]);
+  const [supplierSaving, setSupplierSaving] = useState(false);
+  const [seasonSuggestions, setSeasonSuggestions] = useState<Array<{ _id: string; name: string }>>([]);
+  const [seasonSaving, setSeasonSaving] = useState(false);
+  const [dressTypeSuggestions, setDressTypeSuggestions] = useState<Array<{ _id: string; name: string }>>([]);
+  const [dressTypeSaving, setDressTypeSaving] = useState(false);
+  const colorDebounceRef = useRef<number | null>(null);
+  const categoryDebounceRef = useRef<number | null>(null);
+  const subcategoryDebounceRef = useRef<number | null>(null);
+  const supplierDebounceRef = useRef<number | null>(null);
+  const seasonDebounceRef = useRef<number | null>(null);
+  const dressTypeDebounceRef = useRef<number | null>(null);
 
   // inline edit state
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -285,8 +220,14 @@ export default function NewProductPage() {
   useEffect(() => {
     return () => {
       if (mediaPreview) URL.revokeObjectURL(mediaPreview);
+      productMediaPreviews.forEach((u) => { try { URL.revokeObjectURL(u); } catch {} });
+      Object.values(colorMediaPreviews).forEach((arr) =>
+        arr.forEach((u) => {
+          try { URL.revokeObjectURL(u); } catch {}
+        })
+      );
     };
-  }, [mediaPreview]);
+  }, [mediaPreview, productMediaPreviews, colorMediaPreviews]);
 
   // Close size dropdown when clicking outside
   useEffect(() => {
@@ -313,6 +254,36 @@ export default function NewProductPage() {
         setAllColors(names);
       } catch {
         setAllColors([]);
+      }
+    })();
+  }, []);
+
+  // Close color dropdown when clicking outside
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (!colorPickerRef.current) return;
+      if (!colorPickerRef.current.contains(e.target as Node)) setColorOpen(false);
+    }
+    if (colorOpen) document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [colorOpen]);
+
+  // Load all sizes once to populate the size picker from master
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get(`/api/masters/sizes`, { params: { q: '', limit: 1000 } });
+        const labels: string[] = Array.isArray(data)
+          ? Array.from(new Set(
+              data
+                .map((s: any) => (typeof s === 'string' ? s : s?.label))
+                .filter((n: any) => typeof n === 'string' && n.trim().length)
+            ))
+              .sort((a, b) => a.localeCompare(b))
+          : [];
+        setAllSizes(labels);
+      } catch {
+        setAllSizes([]);
       }
     })();
   }, []);
@@ -353,61 +324,9 @@ export default function NewProductPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-select category from style number when possible
-  useEffect(() => {
-    const alpha = (styleNumber || "").replace(/[^a-zA-Z]/g, "").toUpperCase();
-    if (!alpha) {
-      setAutoCategory(null);
-      return;
-    }
-    const norm = (s: string) => s.replace(/[^a-zA-Z]/g, "").toUpperCase();
-    const mapped = CATEGORY_OPTIONS.map((c) => ({ c, n: norm(c) }));
-    let hit = mapped.find((m) => alpha.startsWith(m.n));
-    if (!hit) hit = mapped.find((m) => alpha.includes(m.n));
-    const detected = hit?.c ?? null;
-    setAutoCategory(detected);
-    if (detected && !category) setCategory(detected);
-  }, [styleNumber]);
+  // (removed color dropdown open/close wrapper)
 
-  // Load all categories once to populate dropdown and datalist
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await api.get(`/api/masters/categories`, { params: { q: '', limit: 1000 } });
-        const names: string[] = Array.isArray(data)
-          ? Array.from(new Set(
-              data
-                .map((c: any) => (typeof c === 'string' ? c : c?.name))
-                .filter((n: any) => typeof n === 'string' && n.trim().length)
-            ))
-              .sort((a, b) => a.localeCompare(b))
-          : [];
-        setAllCategories(names);
-      } catch {
-        setAllCategories([]);
-      }
-    })();
-  }, []);
-
-  // Load all suppliers once
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await api.get(`/api/masters/suppliers`, { params: { q: '', limit: 1000 } });
-        const names: string[] = Array.isArray(data)
-          ? Array.from(new Set(
-              data
-                .map((c: any) => (typeof c === 'string' ? c : c?.name))
-                .filter((n: any) => typeof n === 'string' && n.trim().length)
-            ))
-              .sort((a, b) => a.localeCompare(b))
-          : [];
-        setAllSuppliers(names);
-      } catch {
-        setAllSuppliers([]);
-      }
-    })();
-  }, []);
+  // Removed legacy auto-category and preload effects
 
   /* ---------------- DRAFT: autosave (debounced) ---------------- */
   const autosaveTimer = useRef<number | null>(null);
@@ -603,6 +522,7 @@ export default function NewProductPage() {
       const style = tokenize(styleNumber);
       if (!style) throw new Error("Style number is required.");
       if (!title.trim()) throw new Error("Title is required.");
+      if (!category.trim()) throw new Error("Category is required.");
       if (lines.length === 0) throw new Error("Add at least one variant row.");
       if (editingIndex !== null)
         throw new Error("Finish or cancel the edit in progress.");
@@ -681,25 +601,50 @@ export default function NewProductPage() {
       const productId = created?._id;
       if (!productId) throw new Error("Create API did not return product _id");
 
-      // If a media file was selected, attach it to the first variant
+      // If media files were selected, attach to the product (product-level media)
       try {
-        if (mediaFile) {
-          let variantId: string | undefined = created?.variants?.[0]?._id;
-          if (!variantId) {
-            // fetch deep to locate a variant id
-            const { data: deep } = await api.get(`/api/products/${productId}`);
-            variantId = deep?.variants?.[0]?._id;
-          }
-          if (variantId) {
-            const fd = new FormData();
-            fd.append('files', mediaFile);
-            // Let Axios set the correct multipart boundary header
-            await api.post(`/api/products/variants/${variantId}/media`, fd);
-          }
+        if (mediaFile || productMedia.length) {
+          const fd = new FormData();
+          if (mediaFile) fd.append('files', mediaFile);
+          productMedia.forEach((f) => fd.append('files', f));
+          await api.post(`/api/products/${productId}/media`, fd);
         }
       } catch (e) {
         // non-fatal: media attach failed, but product is created
         console.warn('Media upload failed:', e);
+      }
+
+      // Upload variant-level media grouped by color (if any)
+      try {
+        let createdVariants: Array<{ _id: string; color?: { name?: string } }> = created?.variants || [];
+        if (!Array.isArray(createdVariants) || createdVariants.length === 0) {
+          // Fallback: fetch product deep to get variants
+          try {
+            const { data: deep } = await api.get(`/api/products/${productId}`);
+            createdVariants = deep?.variants || [];
+          } catch {}
+        }
+        const mapByColor = new Map<string, string>(); // norm color -> variantId
+        const mapBySku = new Map<string, string>();   // sku -> variantId
+        createdVariants.forEach((v) => {
+          const key = normColor(v?.color?.name || "");
+          if (key) mapByColor.set(key, v._id);
+          if ((v as any)?.sku) mapBySku.set(String((v as any).sku), v._id);
+        });
+        for (const [key, files] of Object.entries(colorMedia)) {
+          let variantId = mapByColor.get(normColor(key));
+          if (!variantId) {
+            // Try resolve by expected SKU if color is missing from response
+            const expectedSku = `${tokenize(styleNumber)}-${skuSuffixFromColor(key)}`;
+            variantId = mapBySku.get(expectedSku);
+          }
+          if (!variantId || !files?.length) continue;
+          const fd = new FormData();
+          files.forEach((f) => fd.append('files', f));
+          await api.post(`/api/products/variants/${variantId}/media`, fd);
+        }
+      } catch (e) {
+        console.warn('Variant media upload failed:', e);
       }
 
       // clear draft after successful save
@@ -742,16 +687,11 @@ export default function NewProductPage() {
                 <td className="p-2">
                   <Input
                     value={styleNumber}
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    onChange={(e) => {
-                      const raw = e.target.value || "";
-                      const digits = raw.replace(/\D/g, "");
-                      setStyleNumber(digits);
-                    }}
-                    placeholder="Auto-assigned if left blank"
+                    onChange={(e) => setStyleNumber(e.target.value)}
+                    required
+                    placeholder="e.g., STY-500010 or ABC123"
                   />
-                  <p className="text-[11px] text-muted-foreground mt-1">Leave blank to auto-generate. Numbers only if provided.</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Use letters and/or numbers. Must be unique.</p>
                 </td>
               </tr>
               <tr>
@@ -789,7 +729,49 @@ export default function NewProductPage() {
               <tr>
                 <td className="align-top p-2 font-medium">Description</td>
                 <td className="p-2">
-                  <Textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
+                  <Textarea required rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
+                </td>
+              </tr>
+              <tr>
+                <td className="align-top p-2 font-medium">Product Media</td>
+                <td className="p-2">
+                  <div className="flex items-start gap-3">
+                    <Input
+                      type="file"
+                      accept="image/*,video/*"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        if (!files.length) return;
+                        setProductMedia((prev) => [...prev, ...files]);
+                        const urls = files.map((f) => URL.createObjectURL(f));
+                        setProductMediaPreviews((prev) => [...prev, ...urls]);
+                      }}
+                    />
+                    {productMedia.length > 0 && (
+                      <ul className="mt-2 w-full space-y-1 text-sm">
+                        {productMedia.map((f, i) => (
+                          <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-3 rounded border px-2 py-1">
+                            <span className="truncate">{f.name} {f.type ? `(${f.type.split('/')[0]})` : ''} · {humanFileSize(f.size)}</span>
+                            <button
+                              type="button"
+                              className="text-xs px-2 py-0.5 border rounded"
+                              onClick={() => {
+                                const url = productMediaPreviews[i];
+                                setProductMedia((prev) => prev.filter((_, idx) => idx !== i));
+                                setProductMediaPreviews((prev) => prev.filter((_, idx) => idx !== i));
+                                if (url) { try { URL.revokeObjectURL(url); } catch {} }
+                              }}
+                              aria-label={`Remove ${f.name}`}
+                            >
+                              Remove
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1">You can also attach media to each color below after adding lines.</p>
                 </td>
               </tr>
               <tr>
@@ -799,98 +781,310 @@ export default function NewProductPage() {
                     <Input
                       value={category}
                       onChange={(e) => {
-                        const v = e.target.value;
+                        const vRaw = e.target.value;
+                        const v = vRaw.toUpperCase();
                         setCategory(v);
                         setSelectedCategoryId(null);
-                        if (categoryDebounceRef.current) clearTimeout(categoryDebounceRef.current);
-                        if (v.trim().length < 2) return setCategorySuggestions([]);
-                        categoryDebounceRef.current = setTimeout(async () => {
+                        if (categoryDebounceRef.current !== null) window.clearTimeout(categoryDebounceRef.current);
+                        // Require at least 2 chars to query
+                        if (v.trim().length < 1) {
+                          setCategorySuggestions([]);
+                          return;
+                        }
+                        categoryDebounceRef.current = window.setTimeout(async () => {
                           try {
                             const { data } = await api.get(`/api/masters/categories`, { params: { q: v, limit: 8 } });
-                            setCategorySuggestions(data || []);
-                          } catch { setCategorySuggestions([]); }
-                        }, 200);
+                            setCategorySuggestions(Array.isArray(data) ? data : []);
+                          } catch {
+                            setCategorySuggestions([]);
+                          } 
+                        }, 250);
                       }}
-                      list="category-options"
-                      placeholder="e.g., Dynasty"
+                      required
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = category.trim();
+                          if (!val || categorySaving) return;
+                          try {
+                            setCategorySaving(true);
+                            const { data } = await api.post('/api/masters/categories', { name: val });
+                            const savedName = (data?.name || val).toString();
+                            setCategory(savedName.toUpperCase());
+                            setSelectedCategoryId(data?._id || null);
+                            // Prepend to suggestions if not present
+                            setCategorySuggestions((prev) => {
+                              const exists = (prev || []).some((c) => c.name.toLowerCase() === savedName.toLowerCase());
+                              return exists ? prev : [{ _id: data?._id || savedName, name: savedName }, ...(prev || [])].slice(0, 8);
+                            });
+                          } catch (err) {
+                            // best-effort, keep input as-is
+                          } finally {
+                            setCategorySaving(false);
+                          }
+                        }
+                      }}
+                      placeholder="Enter category name"
                     />
                     {categorySuggestions.length > 0 && (
-                      <div className="absolute z-10 mt-1 w-full rounded border bg-white shadow">
+                      <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow">
                         {categorySuggestions.map((c) => (
-                          <button type="button" key={c._id} className="w-full text-left px-2 py-1 hover:bg-gray-100" onClick={() => { setCategory(c.name); setSelectedCategoryId(c._id); setCategorySuggestions([]); }}>
-                            {c.name}
+                          <button
+                            type="button"
+                            key={c._id}
+                            className="w-full text-left px-2 py-1 hover:bg-gray-100"
+                            onClick={() => {
+                              setCategory((c.name || '').toUpperCase());
+                              setSelectedCategoryId(c._id);
+                              setCategorySuggestions([]);
+                            }}
+                          >
+                            {String(c.name || '').toUpperCase()}
                           </button>
                         ))}
-                      </div>
-                    )}
-                    {autoCategory && autoCategory !== category && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        Auto-detected from style: <button type="button" className="underline" onClick={() => setCategory(autoCategory!)}>{autoCategory}</button>
                       </div>
                     )}
                   </div>
                 </td>
               </tr>
               <tr>
-                <td className="align-top p-2 font-medium">Subcategory</td>
+                <td className="align-top p-2 font-medium">Sub-Category</td>
                 <td className="p-2">
-                  <select className="w-full h-10 border rounded px-3" value={subcategory} onChange={(e) => setSubcategory(e.target.value)}>
-                    <option value="">None</option>
-                    {SUBCATEGORY_OPTIONS.filter((o) => o !== "None").map((o) => (
-                      <option key={o} value={o}>{o}</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <Input
+                      value={subcategory}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setSubcategory(v);
+                        if (subcategoryDebounceRef.current !== null) window.clearTimeout(subcategoryDebounceRef.current);
+                        if (!selectedCategoryId || v.trim().length < 2) {
+                          setSubcategorySuggestions([]);
+                          return;
+                        }
+                        subcategoryDebounceRef.current = window.setTimeout(async () => {
+                          try {
+                            const { data } = await api.get(`/api/masters/categories`, { params: { q: v, parent: selectedCategoryId, limit: 8 } });
+                            setSubcategorySuggestions(Array.isArray(data) ? data : []);
+                          } catch {
+                            setSubcategorySuggestions([]);
+                          }
+                        }, 250);
+                      }}
+                      required
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = subcategory.trim();
+                          if (!val || !selectedCategoryId || subcategorySaving) return;
+                          try {
+                            setSubcategorySaving(true);
+                            const { data } = await api.post('/api/masters/categories', { name: val, parentId: selectedCategoryId });
+                            const savedName = (data?.name || val).toString();
+                            setSubcategory(savedName);
+                            setSubcategorySuggestions((prev) => {
+                              const exists = (prev || []).some((c) => c.name.toLowerCase() === savedName.toLowerCase());
+                              return exists ? prev : [{ _id: data?._id || savedName, name: savedName }, ...(prev || [])].slice(0, 8);
+                            });
+                          } catch {}
+                          finally {
+                            setSubcategorySaving(false);
+                          }
+                        }
+                      }}
+                      placeholder="Enter Sub-Category"
+                    />
+                    {subcategorySuggestions.length > 0 && (
+                      <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow">
+                        {subcategorySuggestions.map((c) => (
+                          <button
+                            type="button"
+                            key={c._id}
+                            className="w-full text-left px-2 py-1 hover:bg-gray-100"
+                            onClick={() => {
+                              setSubcategory(c.name || '');
+                              setSubcategorySuggestions([]);
+                            }}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </td>
               </tr>
               <tr>
                 <td className="align-top p-2 font-medium">Supplier</td>
                 <td className="p-2">
-                  <Input value={supplier} onChange={(e) => setSupplier(e.target.value)} list="supplier-options" />
+                  <div className="relative">
+                    <Input
+                      value={supplier}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setSupplier(v);
+                        if (supplierDebounceRef.current !== null) window.clearTimeout(supplierDebounceRef.current);
+                        if (v.trim().length < 1) { setSupplierSuggestions([]); return; }
+                        supplierDebounceRef.current = window.setTimeout(async () => {
+                          try {
+                            const { data } = await api.get(`/api/masters/suppliers`, { params: { q: v, limit: 8 } });
+                            setSupplierSuggestions(Array.isArray(data) ? data : []);
+                          } catch { setSupplierSuggestions([]); }
+                        }, 250);
+                      }}
+                      required
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = supplier.trim();
+                          if (!val || supplierSaving) return;
+                          try {
+                            setSupplierSaving(true);
+                            const { data } = await api.post('/api/masters/suppliers', { name: val });
+                            const savedName = (data?.name || val).toString();
+                            setSupplier(savedName);
+                            setSupplierSuggestions((prev) => {
+                              const exists = (prev || []).some((c) => (c.name || '').toLowerCase() === savedName.toLowerCase());
+                              return exists ? prev : [{ _id: data?._id || savedName, name: savedName }, ...(prev || [])].slice(0, 8);
+                            });
+                          } catch {}
+                          finally { setSupplierSaving(false); }
+                        }
+                      }}
+                      placeholder="Enter Supplier"
+                    />
+                    {supplierSuggestions.length > 0 && (
+                      <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow">
+                        {supplierSuggestions.map((c) => (
+                          <button
+                            type="button"
+                            key={c._id}
+                            className="w-full text-left px-2 py-1 hover:bg-gray-100"
+                            onClick={() => { setSupplier(c.name || ''); setSupplierSuggestions([]); }}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </td>
               </tr>
               <tr>
                 <td className="align-top p-2 font-medium">Season</td>
                 <td className="p-2">
-                  <select className="w-full h-10 border rounded px-3" value={season} onChange={(e) => setSeason(e.target.value)}>
-                    <option value="">Select Season</option>
-                    <option value="AW10">AW10</option>
-                    <option value="AW11">AW11</option>
-                    <option value="AW12">AW12</option>
-                    <option value="AW13">AW13</option>
-                    <option value="AW14">AW14</option>
-                    <option value="AW15">AW15</option>
-                    <option value="AW16">AW16</option>
-                    <option value="AW17">AW17</option>
-                    <option value="AW18">AW18</option>
-                    <option value="SS10">SS10</option>
-                    <option value="SS11">SS11</option>
-                    <option value="SS12">SS12</option>
-                    <option value="SS13">SS13</option>
-                    <option value="SS14">SS14</option>
-                    <option value="SS15">SS15</option>
-                    <option value="SS16">SS16</option>
-                    <option value="SS17">SS17</option>
-                    <option value="SS18">SS18</option>
-                    <option value="SS19">SS19</option>
-                    <option value="SS20">SS20</option>
-                  </select>
+                  <div className="relative">
+                    <Input
+                      value={season}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setSeason(v);
+                        if (seasonDebounceRef.current !== null) window.clearTimeout(seasonDebounceRef.current);
+                        if (v.trim().length < 1) { setSeasonSuggestions([]); return; }
+                        seasonDebounceRef.current = window.setTimeout(async () => {
+                          try {
+                            const { data } = await api.get(`/api/masters/seasons`, { params: { q: v, limit: 8 } });
+                            setSeasonSuggestions(Array.isArray(data) ? data : []);
+                          } catch { setSeasonSuggestions([]); }
+                        }, 250);
+                      }}
+                      required
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = season.trim();
+                          if (!val || seasonSaving) return;
+                          try {
+                            setSeasonSaving(true);
+                            const { data } = await api.post('/api/masters/seasons', { name: val });
+                            const savedName = (data?.name || val).toString();
+                            setSeason(savedName);
+                            setSeasonSuggestions((prev) => {
+                              const exists = (prev || []).some((c) => (c.name || '').toLowerCase() === savedName.toLowerCase());
+                              return exists ? prev : [{ _id: data?._id || savedName, name: savedName }, ...(prev || [])].slice(0, 8);
+                            });
+                          } catch {}
+                          finally { setSeasonSaving(false); }
+                        }
+                      }}
+                      placeholder="Season"
+                    />
+                    {seasonSuggestions.length > 0 && (
+                      <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow">
+                        {seasonSuggestions.map((c) => (
+                          <button
+                            type="button"
+                            key={c._id}
+                            className="w-full text-left px-2 py-1 hover:bg-gray-100"
+                            onClick={() => { setSeason(c.name || ''); setSeasonSuggestions([]); }}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </td>
               </tr>
               <tr>
                 <td className="align-top p-2 font-medium">Dress Type</td>
                 <td className="p-2">
-                  <select className="w-full h-10 border rounded px-3" value={dressType} onChange={(e) => setDressType(e.target.value)}>
-                    <option value="">None</option>
-                    {DRESS_TYPES.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <Input
+                      value={dressType}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setDressType(v);
+                        if (dressTypeDebounceRef.current !== null) window.clearTimeout(dressTypeDebounceRef.current);
+                        if (v.trim().length < 1) { setDressTypeSuggestions([]); return; }
+                        dressTypeDebounceRef.current = window.setTimeout(async () => {
+                          try {
+                            const { data } = await api.get(`/api/masters/dress-types`, { params: { q: v, limit: 8 } });
+                            setDressTypeSuggestions(Array.isArray(data) ? data : []);
+                          } catch { setDressTypeSuggestions([]); }
+                        }, 250);
+                      }}
+                      required
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = dressType.trim();
+                          if (!val || dressTypeSaving) return;
+                          try {
+                            setDressTypeSaving(true);
+                            const { data } = await api.post('/api/masters/dress-types', { name: val });
+                            const savedName = (data?.name || val).toString();
+                            setDressType(savedName);
+                            setDressTypeSuggestions((prev) => {
+                              const exists = (prev || []).some((c) => (c.name || '').toLowerCase() === savedName.toLowerCase());
+                              return exists ? prev : [{ _id: data?._id || savedName, name: savedName }, ...(prev || [])].slice(0, 8);
+                            });
+                          } catch {}
+                          finally { setDressTypeSaving(false); }
+                        }
+                      }}
+                      placeholder="Enter Dress Type"
+                    />
+                    {dressTypeSuggestions.length > 0 && (
+                      <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow">
+                        {dressTypeSuggestions.map((c) => (
+                          <button
+                            type="button"
+                            key={c._id}
+                            className="w-full text-left px-2 py-1 hover:bg-gray-100"
+                            onClick={() => { setDressType(c.name || ''); setDressTypeSuggestions([]); }}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </td>
               </tr>
               <tr>
                 <td className="align-top p-2 font-medium">Cost Price ($)</td>
                 <td className="p-2">
-                  <Input type="number" step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} />
+                  <Input type="number" required step="0.01" value={wholesale} onChange={(e) => setWholesale(e.target.value)} />
                 </td>
               </tr>
             </tbody>
@@ -903,82 +1097,100 @@ export default function NewProductPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-start">
             <div className="md:col-span-2">
-              <Label className="m-2">Color name</Label>
-              <div className="relative">
-                <Input
-                  value={colorName}
-                  onChange={async (e) => {
-                    const v = e.target.value;
-                    setColorName(v);
-                    const q = v.trim().toLowerCase();
-                    if (!q) return setColorSuggestions([]);
-                    let sugg = allColors
-                      .filter((n) => n.toLowerCase().startsWith(q))
-                      .slice(0, 15);
-                    // Fallback to API if local cache is empty
-                    if (sugg.length === 0 && allColors.length === 0) {
-                      try {
-                        const { data } = await api.get(`/api/masters/colors`, { params: { q: v, limit: 15 } });
-                        const names: string[] = Array.isArray(data)
-                          ? Array.from(new Set(
-                              data
-                                .map((c: any) => (typeof c === 'string' ? c : c?.name))
-                                .filter((n: any) => typeof n === 'string' && n.trim().length)
-                            ))
-                          : [];
-                        setColorSuggestions(names);
-                        return;
-                      } catch {
-                        // ignore
+              <Label className="m-2">Color</Label>
+              <div ref={colorPickerRef} className="relative">
+                <div className="flex gap-2">
+                  <Input
+                    value={newColorName}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setNewColorName(v);
+                      // Debounced backend color suggestions
+                      setColorOpen(true);
+                      if (colorDebounceRef.current !== null) window.clearTimeout(colorDebounceRef.current);
+                      colorDebounceRef.current = window.setTimeout(async () => {
+                        if (!v.trim()) { setColorSuggestions([]); return; }
+                        try {
+                          const { data } = await api.get(`/api/masters/colors`, { params: { q: v, limit: 8 } });
+                          const names: string[] = Array.isArray(data)
+                            ? Array.from(new Set(
+                                data
+                                  .map((c: any) => (typeof c === 'string' ? c : c?.name))
+                                  .filter((n: any) => typeof n === 'string' && n.trim().length)
+                              ))
+                            : [];
+                          setColorSuggestions(names);
+                        } catch { setColorSuggestions([]); }
+                      }, 250);
+                    }}
+                    onFocus={() => setColorOpen(true)}
+                    placeholder="Search or add a color (e.g., Teal)"
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const val = newColorName.trim();
+                        if (!val || newColorSaving) return;
+                        try {
+                          setNewColorSaving(true);
+                          const { data } = await api.post('/api/masters/colors', { name: val });
+                          const savedName = (data?.name || val).toString();
+                          // Update master list and selected chips
+                          setAllColors((prev) => Array.from(new Set([...(prev || []), savedName])).sort((a,b)=>a.localeCompare(b)));
+                          const display = savedName.toUpperCase();
+                          setColorList((prev) => (prev.includes(display) ? prev : [...prev, display]));
+                          setNewColorName('');
+                          setColorSuggestions([]);
+                          setColorOpen(false);
+                        } catch (err) {
+                          console.warn('Failed to save color', err);
+                        } finally {
+                          setNewColorSaving(false);
+                        }
                       }
-                    }
-                    setColorSuggestions(sugg);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const v = colorName.trim();
-                      if (!v) return;
-                      const exists = colorList.some((c) => normColor(c) === normColor(v));
-                      if (!exists) setColorList((prev) => [...prev, v]);
-                      setColorName("");
-                      setColorSuggestions([]);
-                    }
-                  }}
-                  placeholder="Enter Color and press Enter"
-                />
-                {colorSuggestions.length > 0 && (
-                  <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow max-h-48 overflow-auto">
+                    }}
+                  />
+                </div>
+                {colorOpen && newColorName.trim().length > 0 && colorSuggestions.length > 0 && (
+                  <div className="absolute z-20 mt-1 w-full rounded border bg-white shadow max-h-64 overflow-auto">
                     {colorSuggestions.map((c) => (
                       <button
                         type="button"
-                        key={c}
+                        key={`sugg-${c}`}
                         className="w-full text-left px-2 py-1 hover:bg-gray-100"
                         onClick={() => {
-                          setColorName(c);
+                          const display = c.toUpperCase();
+                          setColorList((prev) => (prev.includes(display) ? prev : [...prev, display]));
+                          setNewColorName('');
                           setColorSuggestions([]);
+                          setColorOpen(false);
                         }}
                       >
-                        <span className="mr-2">{c}</span>
+                        {c}
                       </button>
                     ))}
                   </div>
                 )}
-                <div className="flex flex-wrap gap-2 mt-2 min-h-6">
-                  {colorList.map((c, idx) => (
-                    <span key={`${c}-${idx}`} className="inline-flex items-center bg-gray-100 border border-gray-300 rounded-full px-2 py-1 text-xs">
-                      {c}
-                      <button
-                        type="button"
-                        className="ml-2 text-gray-500 hover:text-gray-700"
-                        onClick={() => setColorList((prev) => prev.filter((_, i) => i !== idx))}
-                        aria-label={`Remove ${c}`}
+                {/* Selected colors (chips) */}
+                {colorList.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2 min-h-6">
+                    {colorList.map((c, idx) => (
+                      <span
+                        key={`${c}-${idx}`}
+                        className="inline-flex items-center bg-gray-100 border border-gray-300 rounded-full px-2 py-1 text-xs"
                       >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
+                        {c.toUpperCase()}
+                        <button
+                          type="button"
+                          className="ml-2 text-gray-500 hover:text-gray-700"
+                          onClick={() => setColorList((prev) => prev.filter((_, i) => i !== idx))}
+                          aria-label={`Remove ${c}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             
@@ -986,41 +1198,99 @@ export default function NewProductPage() {
               <Label className="m-2">Size</Label>
               <div ref={sizePickerRef} className="relative">
                 <Input
-                  readOnly
-                  value={selectedSizes.length ? selectedSizes.join(", ") : ""}
+                  value={sizeFilter}
+                  onChange={(e) => { setSizeFilter(e.target.value); setSizeOpen(true); }}
                   onFocus={() => setSizeOpen(true)}
                   onClick={() => setSizeOpen(true)}
-                  placeholder="Select size(s)"
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const raw = sizeFilter.trim();
+                      if (!raw || newSizeSaving) return;
+                      const parts = Array.from(
+                        new Set(
+                          raw
+                            .split(/[\n,]+/)
+                            .map((s) => s.trim())
+                            .filter(Boolean)
+                        )
+                      ).sort((a,b)=>a.toLowerCase().localeCompare(b.toLowerCase()));
+                      if (parts.length === 0) return;
+                      try {
+                        setNewSizeSaving(true);
+                        // Persist each entered size to the backend (best-effort)
+                        await Promise.all(
+                          parts.map(async (label) => {
+                            try { await api.post('/api/masters/sizes?q=S&limit=50"', { label }); } catch {}
+                          })
+                        );
+                        // Update master list and selection locally
+                        setAllSizes((prev) => Array.from(new Set([...(prev || []), ...parts])).sort((a,b)=>a.localeCompare(b)));
+                        setSelectedSizes((prev) => {
+                          const next = Array.from(new Set([...(prev || []), ...parts]));
+                          next.sort((a,b)=>a.localeCompare(b));
+                          return next;
+                        });
+                        setSizeFilter('');
+                      } catch (err) {
+                        console.warn('Failed to save one or more sizes', err);
+                      } finally {
+                        setNewSizeSaving(false);
+                      }
+                    }
+                  }}
+                  placeholder="Type sizes (comma/newline), press Enter to add"
                 />
                 {sizeOpen && (
-                  <div className="absolute z-20 mt-1 w-full border rounded bg-white shadow p-2 max-h-56 overflow-auto">
-                    <div className="grid grid-cols-3 gap-2">
-                      {PRESET_SIZES.map((sz) => {
-                        const id = `sz-${sz}`;
-                        const checked = selectedSizes.includes(sz);
-                        return (
-                          <label key={sz} htmlFor={id} className="flex items-center gap-2 text-sm cursor-pointer">
-                            <input
-                              id={id}
-                              type="checkbox"
-                              className="h-4 w-4"
-                              checked={checked}
-                              onChange={(e) => {
-                                setSelectedSizes((prev) =>
-                                  e.target.checked ? (prev.includes(sz) ? prev : [...prev, sz]) : prev.filter((s) => s !== sz)
-                                );
-                              }}
-                            />
-                            <span>{sz}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
+                  <div className="absolute z-20 mt-1 w-full border rounded bg-white shadow p-2 max-h-64 overflow-auto">
+                    {allSizes.length === 0 ? (
+                      <div className="text-sm text-gray-500 px-1 py-2">No sizes loaded from backend.</div>
+                    ) : (
+                      <>
+                        
+                        <div className="grid grid-cols-3 gap-2">
+                          {allSizes.filter((s) => s.toLowerCase().includes(sizeFilter.toLowerCase())).map((sz) => {
+                            const id = `sz-${sz}`;
+                            const checked = selectedSizes.includes(sz);
+                            return (
+                              <label key={sz} htmlFor={id} className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input
+                                  id={id}
+                                  type="checkbox"
+                                  className="h-4 w-4"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    setSelectedSizes((prev) =>
+                                      e.target.checked ? (prev.includes(sz) ? prev : [...prev, sz]) : prev.filter((s) => s !== sz)
+                                    );
+                                  }}
+                                />
+                                <span>{sz}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
               {selectedSizes.length > 0 && (
-                <p className="text-xs text-muted-foreground mt-1">Selected: {selectedSizes.join(", ")}</p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {selectedSizes.map((sz, idx) => (
+                    <span key={`${sz}-${idx}`} className="inline-flex items-center bg-gray-100 border border-gray-300 rounded-full px-2 py-1 text-xs">
+                      {sz}
+                      <button
+                        type="button"
+                        className="ml-2 text-gray-500 hover:text-gray-700"
+                        onClick={() => setSelectedSizes((prev) => prev.filter((_, i) => i !== idx))}
+                        aria-label={`Remove ${sz}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
             <div>
@@ -1042,46 +1312,11 @@ export default function NewProductPage() {
                 placeholder="Location"
               />
             </div>
-            <div className="md:col-span-2">
-              <Label className="m-2">Media</Label>
-              <div className="flex items-center gap-3">
-                <Input
-                  type="file"
-                  accept="image/*,video/*"
-                  onChange={handleFileMedia}
-                />
-                {/* Compact preview to keep row height small */}
-                {mediaFile && (
-                  <figure className="w-24 text-center">
-                    {mediaFile.type.startsWith("video/") ? (
-                      <video
-                        src={mediaPreview ?? undefined}
-                        className="h-20 w-20 object-cover rounded border"
-                        controls
-                        playsInline
-                      />
-                    ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={mediaPreview ?? undefined}
-                        alt={mediaFile.name}
-                        className="h-20 w-20 object-cover rounded border"
-                      />
-                    )}
-                    <span
-                      className="block mt-1 text-[10px] text-muted-foreground truncate max-w-24"
-                      title={mediaFile.name}
-                    >
-                      {mediaFile.name}
-                    </span>
-                  </figure>
-                )}
-              </div>
-            </div>
+            {/* Removed quick Media; use per-line Media in the table below */}
             {/* Quantity input removed in quick add */}
 
             <div className="flex items-end">
-              <Button className="ml-2" type="button" onClick={addLine}>
+              <Button className="mt-7" type="button" onClick={addLine}>
                 Add
               </Button>
             </div>
@@ -1103,6 +1338,7 @@ export default function NewProductPage() {
                   <th className="text-left p-2">Color</th>
                   <th className="text-left p-2">Size</th>
                   <th className="text-left p-2">Quantity</th>
+                  <th className="text-left p-2">Media</th>
                   <th className="text-right p-2">Actions</th>
                 </tr>
               </thead>
@@ -1167,6 +1403,31 @@ export default function NewProductPage() {
                             ln.quantity
                           )}
                           </td>
+                        {/* Per-line media for this color */}
+                        <td className="p-2 align-middle">
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="file"
+                              accept="image/*,video/*"
+                              multiple
+                              onChange={(e) => {
+                                const files = Array.from(e.target.files || []);
+                                if (!files.length) return;
+                                const key = normColor(ln.colorName);
+                                setColorMedia((prev) => ({ ...prev, [key]: [ ...(prev[key] || []), ...files ] }));
+                                const urls = files.map((f) => URL.createObjectURL(f));
+                                setColorMediaPreviews((prev) => ({ ...prev, [key]: [ ...(prev[key] || []), ...urls ] }));
+                                e.currentTarget.value = '';
+                              }}
+                            />
+                            {(() => {
+                              const key = normColor(ln.colorName);
+                              const count = (colorMedia[key] || []).length;
+                              return count ? <span className="text-xs text-gray-600">{count} file{count>1?'s':''}</span> : null;
+                            })()}
+                          </div>
+                        </td>
+
                         {/* Actions */}
                         <td className="p-2 flex justify-end align-middle text-right">
                           {isEdit ? (
@@ -1222,7 +1483,7 @@ export default function NewProductPage() {
 
         <div className="flex gap-2">
           <Button className="bg-green-600" type="submit" disabled={saving}>
-            {saving ? "Saving…" : "Create product"}
+            {saving ? "Saving…" : "Save product"}
           </Button>
           <Button
             type="button"
@@ -1233,24 +1494,6 @@ export default function NewProductPage() {
           </Button>
         </div>
       </form>
-      {/* Category quick-pick options (populated from master) */}
-      <datalist id="category-options">
-        {allCategories.map((o) => (
-          <option key={o} value={o} />
-        ))}
-      </datalist>
-      {/* Supplier quick-pick options (populated from master) */}
-      <datalist id="supplier-options">
-        {allSuppliers.map((o) => (
-          <option key={o} value={o} />
-        ))}
-      </datalist>
-      {/* Category quick-pick options for the input above */}
-      <datalist id="category-options">
-        {CATEGORY_OPTIONS.map((o) => (
-          <option key={o} value={o} />
-        ))}
-      </datalist>
     </div>
   );
 }

@@ -27,6 +27,10 @@ const VariantSchema = new Schema<VariantDoc>(
     productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true, index: true },
     sku:       { type: String, required: true },
     colorMasterId: { type: Schema.Types.ObjectId, ref: 'ColorMaster' },
+    color: {
+      name: { type: String, required: true, trim: true },
+      code: { type: String },
+    },
     media:     [{
       url: { type: String, required: true },
       type:{ type: String, enum: ['image','video'], required: true },

@@ -126,7 +126,7 @@ const productLookupStage = {
     from: Product.collection.name,
     localField: 'productId',
     foreignField: '_id',
-    pipeline: [{ $project: { _id: 1, title: 1, styleNumber: 1 } }],
+    pipeline: [{ $project: { _id: 1, title: 1, styleNumber: 1, media: 1, price: 1 } }],
     as: 'product',
   },
 };
@@ -182,6 +182,14 @@ export async function addMedia(
   return Variant.findByIdAndUpdate(
     variantId,
     { $push: { media: { $each: items } }, $set: { updatedBy: adminId } },
+    { new: true }
+  ).lean();
+}
+
+export async function removeMedia(variantId: string, mediaId: string, adminId: any) {
+  return Variant.findByIdAndUpdate(
+    variantId,
+    { $pull: { media: { _id: mediaId as any } }, $set: { updatedBy: adminId } },
     { new: true }
   ).lean();
 }

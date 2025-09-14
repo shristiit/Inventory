@@ -1,6 +1,6 @@
 import { Schema, model, Document, Types } from 'mongoose';
 
-export type MasterKind = 'category' | 'supplier';
+export type MasterKind = 'category' | 'supplier' | 'season' | 'dressType';
 
 export interface MasterDoc extends Document {
   kind: MasterKind;
@@ -13,7 +13,7 @@ export interface MasterDoc extends Document {
 
 const MasterSchema = new Schema<MasterDoc>(
   {
-    kind: { type: String, enum: ['category', 'supplier'], required: true, index: true },
+    kind: { type: String, enum: ['category', 'supplier', 'season', 'dressType'], required: true, index: true },
     name: { type: String, required: true, trim: true },
     slug: { type: String, trim: true },
     parentId: { type: Schema.Types.ObjectId, ref: 'Master', default: null, index: true },
@@ -28,4 +28,3 @@ MasterSchema.index({ kind: 1, parentId: 1, name: 1 }, { unique: true });
 MasterSchema.index({ kind: 1, parentId: 1, slug: 1 });
 
 export default model<MasterDoc>('Master', MasterSchema);
-

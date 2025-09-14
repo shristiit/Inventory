@@ -2,14 +2,43 @@ import { Request, Response } from 'express';
 import type { RequestHandler } from 'express';
 import * as productSvc from '../services/product.service';
 import * as variantSvc from '../services/variant.service';
+import Product from '../models/product.model';
+import Variant from '../models/variant.model';
 import * as sizeSvc from '../services/size.service';
 import asyncHandler from '../utils/asyncHandler';
 
 // Products
 export const createProductDeep = asyncHandler(async (req: Request, res: Response) => {
   const adminId = req.user?._id ?? null;
-  const created = await productSvc.createDeep(req.body, adminId);
-  res.status(201).json(created);
+  try {
+    const created = await productSvc.createDeep(req.body, adminId);
+    return res.status(201).json(created);
+  } catch (e: any) {
+    if (e?.code === 11000) {
+      // Duplicate key (likely variant SKU unique index)
+      const key = e?.keyValue ? JSON.stringify(e.keyValue) : 'duplicate key';
+      return res.status(409).json({
+        message: 'Duplicate key',
+        detail: `A unique key already exists: ${key}. Ensure each variant SKU is unique.`,
+      });
+    }
+    throw e;
+  }
+});
+
+// Read-only media endpoints
+export const getProductMedia: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params as { id: string };
+  const doc = await Product.findById(id).select('media').lean();
+  if (!doc) return res.status(404).json({ message: 'Not found' });
+  return res.json(doc.media ?? []);
+});
+
+export const getVariantMedia: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { variantId } = req.params as { variantId: string };
+  const doc = await Variant.findById(variantId).select('media').lean();
+  if (!doc) return res.status(404).json({ message: 'Variant not found' });
+  return res.json(doc.media ?? []);
 });
 
 export const listProducts = asyncHandler(async (req: Request, res: Response) => {
@@ -114,4 +143,38 @@ export const addVariantMedia: RequestHandler = asyncHandler(async (req: Request,
 
   const updated = await variantSvc.addMedia(variantId, items, actorId);
   return res.status(201).json({ media: items, variant: updated });
+});
+
+// Product-level media upload
+export const addProductMedia: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+  const actorId = req.user?._id ?? null;
+  const { id } = req.params as { id: string };
+  const files = (req.files as Express.Multer.File[]) || [];
+  if (!files.length) {
+    return res.status(400).json({ message: 'No files uploaded' });
+  }
+  const items = files.map((f) => ({
+    url: `/static/uploads/${f.filename}`,
+    type: f.mimetype?.startsWith('video/') ? 'video' as const : 'image' as const,
+  }));
+  const updated = await productSvc.addProductMedia(id, items, actorId);
+  return res.status(201).json({ media: items, product: updated });
+});
+
+// Delete single media from variant
+export const deleteVariantMedia: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+  const actorId = req.user?._id ?? null;
+  const { variantId, mediaId } = req.params as { variantId: string; mediaId: string };
+  const updated = await variantSvc.removeMedia(variantId, mediaId, actorId);
+  if (!updated) return res.status(404).json({ message: 'Variant not found' });
+  return res.status(200).json({ variant: updated });
+});
+
+// Delete single media from product
+export const deleteProductMedia: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+  const actorId = req.user?._id ?? null;
+  const { id, mediaId } = req.params as { id: string; mediaId: string };
+  const updated = await productSvc.removeProductMedia(id, mediaId, actorId);
+  if (!updated) return res.status(404).json({ message: 'Product not found' });
+  return res.status(200).json({ product: updated });
 });

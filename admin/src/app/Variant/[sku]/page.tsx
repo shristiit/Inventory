@@ -93,6 +93,7 @@ export default function VariantPage() {
   const [data, setData] = useState<VariantDeep | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<{ group: 'variant' | 'product'; index: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -117,7 +118,10 @@ export default function VariantPage() {
     return () => { cancelled = true; };
   }, [sku]);
 
-  const priceGBP = useMemo(() => formatMinorGBP(data?.priceMinor), [data?.priceMinor]);
+  const priceGBP = useMemo(() => {
+    const minor = typeof data?.priceMinor === 'number' ? data!.priceMinor! : (data as any)?.product?.price;
+    return formatMinorGBP(minor);
+  }, [data?.priceMinor, (data as any)?.product?.price]);
   const updated = useMemo(() => {
     if (!data?.updatedAt) return "—";
     try {
@@ -127,24 +131,14 @@ export default function VariantPage() {
     } catch { return data.updatedAt; }
   }, [data?.updatedAt]);
 
-  /**
-   * Normalize media from:
-   * - variant.media: (MediaItem|string)[]
-   * - variant.images: string[]
-   * - product.media: (MediaItem|string)[]
-   * - product.images: string[]
-   */
-  const mediaList = useMemo<MediaItem[]>(() => {
+  // Build separate lists for variant and product media
+  const variantMediaList = useMemo<MediaItem[]>(() => {
     const raw: Array<MediaItem | string> = [];
-
-    if (Array.isArray(data?.media)) raw.push(...data!.media!);
-    if (Array.isArray(data?.images)) raw.push(...data!.images!);
-    if (Array.isArray(data?.product?.media)) raw.push(...(data!.product!.media!));
-    if (Array.isArray(data?.product?.images)) raw.push(...(data!.product!.images!));
-
+    if (Array.isArray(data?.media)) raw.push(...(data!.media!));
+    if (Array.isArray(data?.images)) raw.push(...(data!.images!));
     const normalized: MediaItem[] = raw
       .map((m) => {
-        if (typeof m === "string") {
+        if (typeof m === 'string') {
           const abs = toAbsoluteAssetUrl(m);
           return abs ? { url: abs, type: guessTypeFromUrl(abs) } : null;
         }
@@ -153,28 +147,75 @@ export default function VariantPage() {
         return { url: abs, type: m.type || guessTypeFromUrl(abs), isPrimary: m.isPrimary };
       })
       .filter(Boolean) as MediaItem[];
-
-    // dedupe by URL and primary first
     const uniq = new Map<string, MediaItem>();
     normalized.forEach((m) => uniq.set(m.url, m));
-    return Array.from(uniq.values()).sort(
-      (a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0)
-    );
-  }, [data]);
+    return Array.from(uniq.values()).sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
+  }, [data?.media, data?.images]);
+
+  const productMediaList = useMemo<MediaItem[]>(() => {
+    const raw: Array<MediaItem | string> = [];
+    if (Array.isArray(data?.product?.media)) raw.push(...(data!.product!.media!));
+    if (Array.isArray(data?.product?.images)) raw.push(...(data!.product!.images!));
+    const normalized: MediaItem[] = raw
+      .map((m) => {
+        if (typeof m === 'string') {
+          const abs = toAbsoluteAssetUrl(m);
+          return abs ? { url: abs, type: guessTypeFromUrl(abs) } : null;
+        }
+        const mm = m as MediaItem;
+        const abs = toAbsoluteAssetUrl(mm.url);
+        if (!abs) return null;
+        return { url: abs, type: mm.type || guessTypeFromUrl(abs), isPrimary: mm.isPrimary };
+      })
+      .filter(Boolean) as MediaItem[];
+    const uniq = new Map<string, MediaItem>();
+    normalized.forEach((m) => uniq.set(m.url, m));
+    return Array.from(uniq.values());
+  }, [data?.product?.media, data?.product?.images]);
+
+  const openVariantAt = (i: number) => {
+    if (i >= 0 && i < variantMediaList.length) setLightbox({ group: 'variant', index: i });
+  };
+  const openProductAt = (i: number) => {
+    if (i >= 0 && i < productMediaList.length) setLightbox({ group: 'product', index: i });
+  };
+  const closeLightbox = () => setLightbox(null);
+  const nextLightbox = () => {
+    setLightbox((lb) => {
+      if (!lb) return lb;
+      const arr = lb.group === 'variant' ? variantMediaList : productMediaList;
+      const next = (lb.index + 1) % Math.max(arr.length, 1);
+      return { ...lb, index: next };
+    });
+  };
+  const prevLightbox = () => {
+    setLightbox((lb) => {
+      if (!lb) return lb;
+      const arr = lb.group === 'variant' ? variantMediaList : productMediaList;
+      const prev = (lb.index - 1 + Math.max(arr.length, 1)) % Math.max(arr.length, 1);
+      return { ...lb, index: prev };
+    });
+  };
+
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeLightbox();
+      else if (e.key === "ArrowRight") nextLightbox();
+      else if (e.key === "ArrowLeft") prevLightbox();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightbox, variantMediaList.length, productMediaList.length]);
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Color and Details</h1>
-          <p className="text-sm text-muted-foreground">SKU: {sku}</p>
+          <h1 className="text-2xl font-bold">Color and Size Details</h1>
         </div>
         <div className="flex gap-2">
-          {data?.product?._id && (
-            <Button variant="outline" onClick={() => router.push(`/Products/${data.product!._id}`)}>
-              View Product
-            </Button>
-          )}
+          
           <Button variant="outline" onClick={() => router.back()}>Back</Button>
         </div>
       </div>
@@ -187,101 +228,31 @@ export default function VariantPage() {
           {/* Overview */}
           <div className="space-y-2">
             <h2 className="text-lg font-semibold">Overview</h2>
+            
             <Table>
               <TableBody>
                 <TableRow>
                   <TableCell className="w-48 font-medium">Product</TableCell>
                   <TableCell>
                     {data.product?.title || "—"}
-                    {data.product?.styleNumber && (
-                      <span className="ml-2 text-muted-foreground">(Style: {data.product.styleNumber})</span>
-                    )}
+                    
                   </TableCell>
                 </TableRow>
                 <TableRow><TableCell className="font-medium">SKU</TableCell><TableCell>{data.sku}</TableCell></TableRow>
+                
                 <TableRow>
-                  <TableCell className="font-medium">Status</TableCell>
-                  <TableCell>
-                    <span className={[
-                      "inline-flex items-center rounded-full px-2 py-0.5 text-xs capitalize",
-                      data.status === "active" ? "bg-green-100 text-green-800"
-                        : data.status === "inactive" ? "bg-gray-100 text-gray-800"
-                        : data.status === "draft" ? "bg-yellow-100 text-yellow-800"
-                        : data.status === "archived" ? "bg-red-100 text-red-800"
-                        : "bg-slate-100 text-slate-800",
-                    ].join(" ")}>
-                      {data.status || "unknown"}
-                    </span>
-                  </TableCell>
+                  
                 </TableRow>
-                <TableRow>
-                  <TableCell className="font-medium">Colour</TableCell>
-                  <TableCell className="flex items-center gap-3">
-                    {data.color?.code && (
-                      <span
-                        className="inline-block h-4 w-4 rounded border"
-                        style={{ backgroundColor: data.color.code }}
-                        title={data.color.code}
-                      />
-                    )}
-                    <span>
-                      {data.color?.name || "—"}
-                      {data.color?.code && <span className="ml-2 text-muted-foreground">({data.color.code})</span>}
-                    </span>
-                  </TableCell>
-                </TableRow>
-                <TableRow><TableCell className="font-medium">Price</TableCell><TableCell>{priceGBP}</TableCell></TableRow>
                 <TableRow><TableCell className="font-medium">Updated</TableCell><TableCell>{updated}</TableCell></TableRow>
 
-                {/* Media thumbnails in overview with filename captions */}
-                <TableRow>
-                  <TableCell className="font-medium">Media</TableCell>
-                  <TableCell>
-                    {mediaList.length === 0 ? (
-                      <span className="text-muted-foreground">—</span>
-                    ) : (
-                      <div className="flex flex-wrap gap-3">
-                        {mediaList.slice(0, 4).map((m, i) => {
-                          const name = filenameFromUrl(m.url);
-                          return (
-                            <figure key={m.url + i} className="w-20">
-                              {m.type === "video" ? (
-                                <video
-                                  src={m.url}
-                                  className="h-16 w-16 rounded border object-cover"
-                                  muted
-                                  playsInline
-                                />
-                              ) : (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={m.url}
-                                  alt={name}
-                                  className="h-16 w-16 rounded border object-cover"
-                                />
-                              )}
-                              <span className="block mt-1 text-[10px] text-muted-foreground truncate" title={name}>
-                                {name}
-                              </span>
-                            </figure>
-                          );
-                        })}
-                        {mediaList.length > 4 && (
-                          <span className="text-xs text-muted-foreground self-center">+{mediaList.length - 4} more</span>
-                        )}
-                      </div>
-                    )}
-                  </TableCell>
-                </TableRow>
+                {/* Media thumbnails in overview with filename captions (prefer variant; fallback to product) */}
+                
 
-                <TableRow>
-                  <TableCell className="font-medium">Variant ID</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{data._id}</TableCell>
-                </TableRow>
+               
               </TableBody>
             </Table>
-          </div>
-
+            </div>
+            
           {/* Sizes */}
           <div className="space-y-2">
             <h2 className="text-lg font-semibold">Sizes & Inventory</h2>
@@ -321,36 +292,102 @@ export default function VariantPage() {
             )}
           </div>
 
-          {/* Full media gallery with filename captions */}
-          {mediaList.length > 0 && (
+          {/* Variant media gallery */}
+          {variantMediaList.length > 0 && (
             <div className="space-y-2">
-              <h2 className="text-lg font-semibold">Media</h2>
+              <h2 className="text-lg font-semibold">Color Media</h2>
               <div className="flex flex-wrap gap-3">
-                {mediaList.map((m, i) => {
+                {variantMediaList.map((m, i) => {
                   const name = filenameFromUrl(m.url);
                   return (
                     <figure key={m.url + i} className="w-28">
-                      {m.type === "video" ? (
-                        <video
-                          src={m.url}
-                          className="h-24 w-24 rounded-md object-cover border"
-                          controls
-                          playsInline
-                        />
-                      ) : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={m.url}
-                          alt={name}
-                          className="h-24 w-24 rounded-md object-cover border"
-                        />
-                      )}
+                      <button type="button" onClick={() => openVariantAt(i)} className="block" title="Click to expand">
+                        {m.type === "video" ? (
+                          <video src={m.url} className="h-24 w-24 rounded-md object-cover border cursor-zoom-in" muted playsInline />
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={m.url} alt={name} className="h-24 w-24 rounded-md object-cover border cursor-zoom-in" />
+                        )}
+                      </button>
                       <span className="block mt-1 text-[10px] text-muted-foreground truncate" title={name}>
                         {name}
                       </span>
                     </figure>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* Product media gallery */}
+          
+
+          {lightbox && (
+            <div
+              className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+              onClick={closeLightbox}
+            >
+              <button
+                type="button"
+                onClick={closeLightbox}
+                aria-label="Close"
+                className="absolute top-4 right-4 text-white/90 hover:text-white text-2xl"
+              >
+                ×
+              </button>
+              {(() => {
+                const arr = lightbox.group === 'variant' ? variantMediaList : productMediaList;
+                return arr.length > 1;
+              })() && (
+                <>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); prevLightbox(); }}
+                    aria-label="Previous"
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-white/90 hover:text-white text-3xl"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); nextLightbox(); }}
+                    aria-label="Next"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white/90 hover:text-white text-3xl"
+                  >
+                    ›
+                  </button>
+                </>
+              )}
+              <div
+                className="max-w-[95vw] max-h-[85vh]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {(() => {
+                  const arr = lightbox.group === 'variant' ? variantMediaList : productMediaList;
+                  const m = arr[lightbox.index];
+                  const name = m ? filenameFromUrl(m.url) : '';
+                  return (
+                    <div className="flex flex-col items-center gap-2">
+                      {m?.type === "video" ? (
+                        <video
+                          src={m?.url}
+                          className="max-h-[80vh] max-w-[90vw] rounded shadow"
+                          controls
+                          autoPlay
+                          playsInline
+                        />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={m?.url}
+                          alt={name}
+                          className="max-h-[80vh] max-w-[90vw] rounded shadow"
+                        />
+                      )}
+                      <div className="text-white/80 text-xs truncate max-w-full" title={name}>{name}</div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}

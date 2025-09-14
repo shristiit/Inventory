@@ -5,7 +5,6 @@ import Variant from '../models/variant.model';
 import Size from '../models/size.model';
 import Archive from '../models/archive.model';
 import * as master from './master.service';
-import Counter from '../models/counter.model';
 
 type DeepCreateInput = {
   product: {
@@ -51,16 +50,7 @@ export async function createDeep(input: DeepCreateInput, adminId: any) {
     // Omit unsupported fields like `attributes` from create payload
     const { attributes: _omitAttributes, category, subcategory, dressType, dresstype, supplier, ...productInput } = (input.product as any) || {};
 
-    // Auto-generate a numeric styleNumber if missing/invalid
-    let styleNumber: string | undefined = productInput.styleNumber;
-    if (typeof styleNumber !== 'string' || !/^\d+$/.test(styleNumber)) {
-      const next = await Counter.findOneAndUpdate(
-        { key: 'styleNumber' },
-        { $inc: { seq: 1 }, $setOnInsert: { seq: 100000 } },
-        { new: true, upsert: true }
-      ).lean();
-      styleNumber = String(next?.seq ?? Date.now());
-    }
+    // Use provided styleNumber as-is (manual, can include letters and numbers)
 
     // Upsert category/subcategory
     let categoryId: any = null;
@@ -86,7 +76,6 @@ export async function createDeep(input: DeepCreateInput, adminId: any) {
       [
         {
           ...productInput,
-          styleNumber,
           status: productInput.status ?? 'active',
           createdBy: adminId,
           categoryId,
@@ -213,6 +202,20 @@ export async function getDeep(productId: string) {
               ],
             },
           },
+          // Ensure color is included in variant docs
+          {
+            $project: {
+              _id: 1,
+              productId: 1,
+              sku: 1,
+              status: 1,
+              color: 1,
+              media: 1,
+              sizes: 1,
+              createdAt: 1,
+              updatedAt: 1,
+            },
+          },
           // (optional) order variants by SKU
           { $sort: { sku: 1 } },
         ],
@@ -278,9 +281,51 @@ export async function list({
 }
 
 export async function updatePartial(productId: string, patch: any, adminId: any) {
+  // Allow friendly updates for category/subcategory/supplier names
+  const {
+    category,
+    subcategory,
+    supplier,
+    dresstype,
+    dressType,
+    ...rest
+  } = patch || {};
+
+  const set: any = { ...rest, updatedBy: adminId };
+  // Normalize dressType from either field name
+  if (typeof (dressType ?? dresstype) !== 'undefined') set.dressType = dressType ?? dresstype;
+
+  // Upsert masters if provided
+  try {
+    if (typeof category === 'string' && category.trim().length) {
+      const cat = await master.upsertCategory(category.trim());
+      set.categoryId = cat?._id ?? null;
+      if (typeof subcategory === 'string' && subcategory.trim().length) {
+        const sub = await master.upsertCategory(subcategory.trim(), set.categoryId);
+        set.subcategoryId = sub?._id ?? null;
+      } else if (subcategory === '') {
+        // explicit clear
+        set.subcategoryId = null;
+      }
+    } else if (category === '') {
+      // explicit clear
+      set.categoryId = null;
+      if (subcategory === '') set.subcategoryId = null;
+    }
+  } catch {}
+
+  try {
+    if (typeof supplier === 'string' && supplier.trim().length) {
+      const sup = await master.upsertSupplier(supplier.trim());
+      set.supplierId = sup?._id ?? null;
+    } else if (supplier === '') {
+      set.supplierId = null;
+    }
+  } catch {}
+
   return Product.findByIdAndUpdate(
     productId,
-    { $set: { ...patch, updatedBy: adminId } },
+    { $set: set },
     { new: true }
   ).lean();
 }
@@ -349,4 +394,24 @@ export async function removeCascadeArchive(productId: string, adminId: any) {
     session.endSession();
     throw e;
   }
+}
+
+export async function addProductMedia(
+  productId: string,
+  items: Array<{ url: string; type: 'image' | 'video'; alt?: string; isPrimary?: boolean }>,
+  adminId: any
+) {
+  return Product.findByIdAndUpdate(
+    productId,
+    { $push: { media: { $each: items } }, $set: { updatedBy: adminId } },
+    { new: true }
+  ).lean();
+}
+
+export async function removeProductMedia(productId: string, mediaId: string, adminId: any) {
+  return Product.findByIdAndUpdate(
+    productId,
+    { $pull: { media: { _id: mediaId as any } }, $set: { updatedBy: adminId } },
+    { new: true }
+  ).lean();
 }
